@@ -20,6 +20,7 @@ class Osc extends Node { constructor(ctx){ super(ctx); this.frequency = new Para
 class Gain extends Node { constructor(ctx){ super(ctx); this.gain = new Param(); } }
 class Filter extends Node { constructor(ctx){ super(ctx); this.frequency = new Param(); this.Q = new Param(); this.gain = new Param(); this.type = 'lowpass'; } }
 class BufSrc extends Node { constructor(ctx){ super(ctx); this.buffer = null; this.loop = false; } }
+class Delay extends Node { constructor(ctx){ super(ctx); this.delayTime = new Param(); } }
 class MockCtx {
   constructor(){ this.sampleRate = 44100; this.currentTime = 0; this.destination = {}; this.calls = { osc: 0, gain: 0, filter: 0, bufSrc: 0, buffer: 0 }; }
   createBuffer(ch, len, sr){ this.calls.buffer++; return { numberOfChannels: ch, length: len, sampleRate: sr, getChannelData: () => new Float32Array(len) }; }
@@ -27,6 +28,7 @@ class MockCtx {
   createGain(){ this.calls.gain++; return new Gain(this); }
   createBiquadFilter(){ this.calls.filter++; return new Filter(this); }
   createBufferSource(){ this.calls.bufSrc++; return new BufSrc(this); }
+  createDelay(){ return new Delay(this); }
   async resume(){ } suspend(){ }
 }
 

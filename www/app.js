@@ -8,7 +8,7 @@
    ========================================================================== */
 'use strict';
 /* __PURE_START__ */
-const CURRENT_VERSION = '1.2.2';
+const CURRENT_VERSION = '1.2.3';
 const REPO = 'torreskodi02-gif/ai-song-maker';
 const LATEST_API = 'https://api.github.com/repos/' + REPO + '/releases/latest';
 /* Fallback for the update check: the release title is often unversioned
@@ -322,24 +322,24 @@ function drumHit(ctx, dest, t, kind, vol){
   if (kind === 'kick'){
     const o = ctx.createOscillator(), g = ctx.createGain();
     o.type = 'sine'; o.frequency.setValueAtTime(150, t); o.frequency.exponentialRampToValueAtTime(44, t + 0.12);
-    g.gain.setValueAtTime(0.9 * vol, t); g.gain.exponentialRampToValueAtTime(0.001, t + 0.26);
+    g.gain.setValueAtTime(0.42 * vol, t); g.gain.exponentialRampToValueAtTime(0.001, t + 0.26);
     o.connect(g); g.connect(dest); o.start(t); o.stop(t + 0.3);
   } else if (kind === 'snare'){
     const src = ctx.createBufferSource(); src.buffer = noiseBuffer(ctx);
     const f = ctx.createBiquadFilter(); f.type = 'bandpass'; f.frequency.value = 1800; f.Q.value = 0.9;
-    const g = ctx.createGain(); g.gain.setValueAtTime(0.5 * vol, t); g.gain.exponentialRampToValueAtTime(0.001, t + 0.16);
+    const g = ctx.createGain(); g.gain.setValueAtTime(0.24 * vol, t); g.gain.exponentialRampToValueAtTime(0.001, t + 0.16);
     src.connect(f); f.connect(g); g.connect(dest); src.start(t); src.stop(t + 0.2);
   } else {
     const src = ctx.createBufferSource(); src.buffer = noiseBuffer(ctx);
     const f = ctx.createBiquadFilter(); f.type = 'highpass'; f.frequency.value = 7500;
-    const g = ctx.createGain(); g.gain.setValueAtTime(0.16 * vol, t); g.gain.exponentialRampToValueAtTime(0.001, t + 0.05);
+    const g = ctx.createGain(); g.gain.setValueAtTime(0.08 * vol, t); g.gain.exponentialRampToValueAtTime(0.001, t + 0.05);
     src.connect(f); f.connect(g); g.connect(dest); src.start(t); src.stop(t + 0.08);
   }
 }
 function crashHit(ctx, dest, t, vol){
   const src = ctx.createBufferSource(); src.buffer = noiseBuffer(ctx);
   const f = ctx.createBiquadFilter(); f.type = 'highpass'; f.frequency.value = 6000;
-  const g = ctx.createGain(); g.gain.setValueAtTime(0.28 * vol, t); g.gain.exponentialRampToValueAtTime(0.001, t + 0.9);
+  const g = ctx.createGain(); g.gain.setValueAtTime(0.14 * vol, t); g.gain.exponentialRampToValueAtTime(0.001, t + 0.9);
   src.connect(f); f.connect(g); g.connect(dest); src.start(t); src.stop(t + 1.0);
 }
 /* Plucked-string guitar, Karplus-Strong: a burst of noise fed through a
@@ -375,33 +375,33 @@ function guitarPluckBuffer(ctx, midi, dur, style){
 }
 function guitarNote(ctx, dest, t, midi, dur, style, vol){
   const src = ctx.createBufferSource(); src.buffer = guitarPluckBuffer(ctx, midi, dur, style);
-  const g = ctx.createGain(); g.gain.setValueAtTime(0.5 * vol, t); g.gain.exponentialRampToValueAtTime(0.001, t + dur);
+  const g = ctx.createGain(); g.gain.setValueAtTime(0.30 * vol, t); g.gain.exponentialRampToValueAtTime(0.001, t + dur);
   const f = ctx.createBiquadFilter(); f.type = 'lowpass'; f.frequency.value = style === 'acoustic' ? 4200 : 3400;
   src.connect(f); f.connect(g); g.connect(dest); src.start(t); src.stop(t + dur);
 }
 function subBassNote(ctx, dest, t, midi, dur, vol){
   const o = ctx.createOscillator(), g = ctx.createGain();
   o.type = 'sine'; o.frequency.setValueAtTime(midiToFreq(midi), t); o.frequency.exponentialRampToValueAtTime(midiToFreq(midi) * 0.82, t + dur);
-  g.gain.setValueAtTime(0.0001, t); g.gain.exponentialRampToValueAtTime(0.65 * vol, t + 0.03);
-  g.gain.setValueAtTime(0.65 * vol, t + Math.max(0.05, dur - 0.1)); g.gain.exponentialRampToValueAtTime(0.001, t + dur);
+  g.gain.setValueAtTime(0.0001, t); g.gain.exponentialRampToValueAtTime(0.30 * vol, t + 0.03);
+  g.gain.setValueAtTime(0.30 * vol, t + Math.max(0.05, dur - 0.1)); g.gain.exponentialRampToValueAtTime(0.001, t + dur);
   o.connect(g); g.connect(dest); o.start(t); o.stop(t + dur + 0.05);
 }
 function bassNote(ctx, dest, t, midi, dur, vol){
   const o = ctx.createOscillator(), g = ctx.createGain();
   o.type = 'triangle'; o.frequency.value = midiToFreq(midi);
-  g.gain.setValueAtTime(0.0001, t); g.gain.exponentialRampToValueAtTime(0.5 * vol, t + 0.02);
-  g.gain.setValueAtTime(0.5 * vol, t + Math.max(0.05, dur - 0.08)); g.gain.exponentialRampToValueAtTime(0.001, t + dur);
+  g.gain.setValueAtTime(0.0001, t); g.gain.exponentialRampToValueAtTime(0.22 * vol, t + 0.02);
+  g.gain.setValueAtTime(0.22 * vol, t + Math.max(0.05, dur - 0.08)); g.gain.exponentialRampToValueAtTime(0.001, t + dur);
   o.connect(g); g.connect(dest); o.start(t); o.stop(t + dur + 0.05);
 }
 function chordPad(ctx, dest, t, midis, dur, kind, vol){
   for (const m of midis){
     const o = ctx.createOscillator(), o2 = ctx.createOscillator(), g = ctx.createGain(), f = ctx.createBiquadFilter();
-    o.type = kind === 'pluck' ? 'triangle' : 'sawtooth'; o2.type = o.type;
+    o.type = 'triangle'; o2.type = 'triangle'; /* triangle pads: warm, not buzzy — the sawtooth pad was a big part of the harshness */
     o.frequency.value = midiToFreq(m); o2.frequency.value = midiToFreq(m); o2.detune.value = 5; o.detune.value = -5;
     f.type = 'lowpass'; f.frequency.value = kind === 'pluck' ? 2600 : 1100;
     const a = kind === 'pluck' ? 0.01 : 0.4, rel = kind === 'pluck' ? 0.35 : dur;
-    g.gain.setValueAtTime(0.0001, t); g.gain.linearRampToValueAtTime(0.11 * vol, t + a);
-    g.gain.setValueAtTime(0.11 * vol, t + Math.max(a, dur - 0.15)); g.gain.exponentialRampToValueAtTime(0.001, t + dur + rel * 0.2);
+    g.gain.setValueAtTime(0.0001, t); g.gain.linearRampToValueAtTime(0.06 * vol, t + a);
+    g.gain.setValueAtTime(0.06 * vol, t + Math.max(a, dur - 0.15)); g.gain.exponentialRampToValueAtTime(0.001, t + dur + rel * 0.2);
     o.connect(f); o2.connect(f); f.connect(g); g.connect(dest);
     o.start(t); o2.start(t); o.stop(t + dur + 0.3); o2.stop(t + dur + 0.3);
   }
@@ -411,16 +411,16 @@ function chordPad(ctx, dest, t, midis, dur, kind, vol){
    track), a formant peak shaped by your base pitch, a short glide into each
    note (portamento — real singers slide, they don't teleport), vibrato on
    longer notes, and a breath of air at the start of soft notes. */
-function vocalNote(ctx, dest, t, midi, dur, style, vol, prevMidi, warmHz){
+function vocalNote(ctx, dest, t, midi, dur, style, vol, prevMidi, warmHz, send){
   const freq = midiToFreq(midi);
   const prevFreq = prevMidi != null ? midiToFreq(prevMidi) : freq;
   const type = style === 'Soft / airy' ? 'sine' : style === 'Autotune' ? 'square' : 'sawtooth';
   const g = ctx.createGain();
   const f = ctx.createBiquadFilter();
-  f.type = 'lowpass'; f.frequency.value = style === 'Raspy' ? 3200 : clamp((warmHz || 200) * 12, 1800, 3600); f.Q.value = 1.2;
+  f.type = 'lowpass'; f.frequency.value = style === 'Raspy' ? 3600 : clamp((warmHz || 200) * 18, 2400, 4800); f.Q.value = 1.2;
   const formant = ctx.createBiquadFilter();
-  formant.type = 'peaking'; formant.frequency.value = clamp((warmHz || 200) * 5, 700, 1500); formant.Q.value = 1.0; formant.gain.value = 4;
-  const peak = (style === 'Powerful' ? 0.5 : style === 'Soft / airy' ? 0.3 : 0.4) * vol;
+  formant.type = 'peaking'; formant.frequency.value = clamp((warmHz || 200) * 5, 700, 1500); formant.Q.value = 1.0; formant.gain.value = 2;
+  const peak = (style === 'Powerful' ? 0.62 : style === 'Soft / airy' ? 0.42 : 0.55) * vol; /* vocal is the lead: louder than any band element */
   g.gain.setValueAtTime(0.0001, t); g.gain.exponentialRampToValueAtTime(peak, t + 0.07);
   g.gain.setValueAtTime(peak, t + Math.max(0.09, dur - 0.14)); g.gain.exponentialRampToValueAtTime(0.001, t + dur);
   const sing = (detune, gainMul) => {
@@ -436,8 +436,8 @@ function vocalNote(ctx, dest, t, midi, dur, style, vol, prevMidi, warmHz){
     }
     o.connect(og); og.connect(formant); o.start(t); o.stop(t + dur + 0.05);
   };
-  sing(0, 1); sing(8, 0.45); /* the double track */
-  formant.connect(f); f.connect(g); g.connect(dest);
+  sing(0, 1); sing(8, 0.35); /* the double track */
+  formant.connect(f); f.connect(g); g.connect(dest); if (send) g.connect(send); /* vocal space send */
   if (style === 'Soft / airy' || style === 'Smooth'){
     const src = ctx.createBufferSource(); src.buffer = noiseBuffer(ctx); src.loop = true;
     const bf = ctx.createBiquadFilter(); bf.type = 'bandpass'; bf.frequency.value = 3200; bf.Q.value = 0.6;
@@ -451,6 +451,23 @@ function vocalNote(ctx, dest, t, midi, dur, style, vol, prevMidi, warmHz){
     src.connect(bf); bf.connect(bg); bg.connect(dest); src.start(t); src.stop(t + dur + 0.05);
   }
 }
+/* Vocal space: a short feedback delay send for the lead vocal only, so the
+   voice sits in a small room instead of sounding dry and beepy. Created ONCE
+   per play/render (a few native nodes) — each vocal note just connects its
+   gain to the send as well as to the master, so it adds no per-note nodes
+   and cannot reintroduce the v1.2.2 freeze. Returns the send GainNode, or
+   null when the context has no DelayNode. */
+function createVocalSpace(ctx, master){
+  if (!ctx || typeof ctx.createDelay !== 'function' || !master) return null;
+  try {
+    const send = ctx.createGain(); send.gain.value = 1;
+    const delay = ctx.createDelay(1.0); delay.delayTime.value = 0.17;
+    const fb = ctx.createGain(); fb.gain.value = 0.28;
+    const wet = ctx.createGain(); wet.gain.value = 0.12;
+    send.connect(delay); delay.connect(fb); fb.connect(delay); delay.connect(wet); wet.connect(master);
+    return send;
+  } catch (e){ return null; }
+}
 /* Schedule a whole song into any BaseAudioContext (live or offline).
    Returns { durationSec, lineEvents: [{t, text, line}] } with absolute times.
    Pass opts.barStart / opts.barEnd to schedule only those bars (the live
@@ -462,6 +479,7 @@ function scheduleSong(ctx, dest, song, opts){
   const o = opts || {}; const t0 = o.t0 || 0; const fromBeat = o.fromBeat || 0;
   const barStart = (o.barStart != null) ? o.barStart : 0;
   const barEnd = (o.barEnd != null) ? o.barEnd : song.bars;
+  const vocalSend = o.vocalSend || null;
   const beat = song.beat; const barSec = 4 * beat;
   const prog = PROGRESSIONS[song.genre] || PROGRESSIONS.Pop;
   const drums = DRUMS[prog.drum] || DRUMS.pop;
@@ -534,10 +552,10 @@ function scheduleSong(ctx, dest, song, opts){
       const nt = t0 + (n.startBeat - fromBeat) * beat; if (nt + n.dur * beat < t0) continue;
       const line = song.lineEvents[n.line];
       const secVol = energyVol * (SECTION_GAIN[line ? line.section : 'verse'] || 1);
-      vocalNote(ctx, dest, Math.max(t0, nt), n.midi, n.dur * beat, song.vocalStyle, secVol, prevMidi, song.voiceHz || 0);
+      vocalNote(ctx, dest, Math.max(t0, nt), n.midi, n.dur * beat, song.vocalStyle, secVol, prevMidi, song.voiceHz || 0, vocalSend);
       if (line && /chorus/i.test(line.section)){
-        vocalNote(ctx, dest, Math.max(t0, nt), n.midi + 4, n.dur * beat, song.vocalStyle, secVol * 0.35, null, song.voiceHz || 0);
-        if (n.lift) vocalNote(ctx, dest, Math.max(t0, nt), n.midi + 7, n.dur * beat, song.vocalStyle, secVol * 0.22, null, song.voiceHz || 0);
+        vocalNote(ctx, dest, Math.max(t0, nt), n.midi + 4, n.dur * beat, song.vocalStyle, secVol * 0.28, null, song.voiceHz || 0, vocalSend);
+        if (n.lift) vocalNote(ctx, dest, Math.max(t0, nt), n.midi + 7, n.dur * beat, song.vocalStyle, secVol * 0.16, null, song.voiceHz || 0, vocalSend);
       }
       prevMidi = n.midi;
     }
@@ -567,8 +585,9 @@ function encodeWAV(buffer){
 async function renderSongWav(song){
   const dur = song.bars * 4 * song.beat + 0.5;
   const off = new OfflineAudioContext(2, Math.ceil(dur * 44100), 44100);
-  const master = off.createGain(); master.gain.value = 0.85; master.connect(off.destination);
-  scheduleSong(off, master, song, { t0: 0.05 });
+  const master = off.createGain(); master.gain.value = 0.47; master.connect(off.destination);
+  const vocalSend = createVocalSpace(off, master);
+  scheduleSong(off, master, song, { t0: 0.05, vocalSend });
   const buf = await off.startRendering();
   return encodeWAV(buf);
 }
@@ -1101,7 +1120,8 @@ async function playSong(song, fromBeat, isRetry){
   if (!ctx) return;
   try { await ctx.resume(); } catch (e){}
   if (ctx.state === 'suspended'){ toast('Audio is blocked — tap Play again'); renderAudioDiag(); return; }
-  songGain = ctx.createGain(); songGain.gain.value = 0.9; songGain.connect(ctx.destination);
+  songGain = ctx.createGain(); songGain.gain.value = 0.47; songGain.connect(ctx.destination);
+  const vocalSend = createVocalSpace(ctx, songGain);
   const t0 = ctx.currentTime + 0.12;
   const startT = ctx.currentTime;
   const fb = fromBeat || 0;
@@ -1122,7 +1142,7 @@ async function playSong(song, fromBeat, isRetry){
       while (scheduledBar < song.bars){
         const barT = t0 + (scheduledBar * 4 - fb) * beat;
         if (barT > horizon) break;
-        const r = scheduleSong(ctx, songGain, song, { t0, fromBeat: fb, barStart: scheduledBar, barEnd: scheduledBar + 1, prevMidi: lastMidi });
+        const r = scheduleSong(ctx, songGain, song, { t0, fromBeat: fb, barStart: scheduledBar, barEnd: scheduledBar + 1, prevMidi: lastMidi, vocalSend });
         if (r.lastMidi != null) lastMidi = r.lastMidi;
         for (const le of r.lineEvents) allLineEvents.push(le);
         scheduledBar++;
