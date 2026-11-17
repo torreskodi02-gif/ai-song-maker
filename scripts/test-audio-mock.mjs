@@ -18,7 +18,7 @@ class Node {
 }
 class Osc extends Node { constructor(ctx){ super(ctx); this.frequency = new Param(); this.detune = new Param(); this.type = 'sine'; } }
 class Gain extends Node { constructor(ctx){ super(ctx); this.gain = new Param(); } }
-class Filter extends Node { constructor(ctx){ super(ctx); this.frequency = new Param(); this.Q = new Param(); this.type = 'lowpass'; } }
+class Filter extends Node { constructor(ctx){ super(ctx); this.frequency = new Param(); this.Q = new Param(); this.gain = new Param(); this.type = 'lowpass'; } }
 class BufSrc extends Node { constructor(ctx){ super(ctx); this.buffer = null; this.loop = false; } }
 class MockCtx {
   constructor(){ this.sampleRate = 44100; this.currentTime = 0; this.destination = {}; this.calls = { osc: 0, gain: 0, filter: 0, bufSrc: 0, buffer: 0 }; }

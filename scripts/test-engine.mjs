@@ -14,7 +14,7 @@ const pure = src.slice(start, end);
 const fn = new Function(pure + `
 ;return { CURRENT_VERSION, REPO, LATEST_API, APK_URL, midiToFreq, midiToName, freqToMidi,
   clamp, hashStr, mulberry32, fmtTime, extractVersion, KEYS, PROGRESSIONS, GENRES, INSTRUMENTS,
-  BAND_LINEUPS, smartPick,
+  BAND_LINEUPS, smartPick, SECTION_GAIN,
   keywordsFromPrompt, titleFromPrompt, generateLyrics, parseLyrics, syllablesOf,
   buildSong, describeStyle };`);
 const M = fn();
@@ -87,7 +87,19 @@ assert.equal(bandSong.guitarStyle, 'electric', 'song keeps guitar style');
 assert.ok(bandSong.smartPick && bandSong.smartPick.reason, 'song keeps Merlin pick');
 console.log('band carry-through OK:', bandSong.band.join(' + '));
 
-// 8. auto-update: the version comes from the release title, never the tag
+// 8. v1.2.0 quality: per-bar sections, final-chorus lift, vocal stays in range
+const qSong = M.buildSong({ title: 'Q', genre: 'Pop', mood: 'Happy', tempo: 104, key: 'C major',
+  durationTarget: 120, energy: 2, vocalStyle: 'Smooth', seed: 7 }, lyrics, { baseHz: 110, lowHz: 90, highHz: 180 });
+assert.equal(qSong.barSections.length, qSong.bars, 'one section per bar');
+assert.ok(qSong.barSections.every(s => s in M.SECTION_GAIN), 'every bar section has a mix gain');
+assert.ok(qSong.melody.some(n => n.lift === 2), 'final chorus lifts +2');
+assert.ok(qSong.melody.every(n => n.lift === 0 || n.lift === 2), 'lift is only 0 or +2');
+const lo = Math.round(M.freqToMidi(180)), hi = Math.round(M.freqToMidi(360));
+assert.ok(qSong.melody.every(n => n.midi >= lo && n.midi <= hi), `melody stays in your range ${lo}-${hi}`);
+assert.ok(qSong.voiceRange && qSong.voiceRange.low === lo && qSong.voiceRange.high === hi, 'song stores your voice range');
+console.log('quality OK: barSections', qSong.barSections.length, 'bars, lift notes', qSong.melody.filter(n => n.lift === 2).length, ', range', lo + '-' + hi);
+
+// 9. auto-update: the version comes from the release title, never the tag
 assert.equal(M.extractVersion('AI Song Maker v1.1.2'), '1.1.2');
 assert.equal(M.extractVersion('v2.0.0'), '2.0.0');
 assert.equal(M.extractVersion('latest'), '', 'a bare "latest" tag is not a version');

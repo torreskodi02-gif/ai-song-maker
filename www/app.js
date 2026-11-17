@@ -8,7 +8,7 @@
    ========================================================================== */
 'use strict';
 /* __PURE_START__ */
-const CURRENT_VERSION = '1.1.2';
+const CURRENT_VERSION = '1.2.0';
 const REPO = 'torreskodi02-gif/ai-song-maker';
 const LATEST_API = 'https://api.github.com/repos/' + REPO + '/releases/latest';
 const APK_URL = 'https://github.com/' + REPO + '/releases/download/latest/ai-song-maker.apk';
@@ -55,6 +55,8 @@ const PROGRESSIONS = {
   'Lo-fi':     { minor: false, prog: [1, 4, 0, 5], tempo: 74,  drum: 'lofi' },
   'Gospel':    { minor: false, prog: [0, 5, 3, 4], tempo: 90,  drum: 'rnb'  },
 };
+/* Mix dynamics: verses sit back, choruses hit hardest, outro fades out. */
+const SECTION_GAIN = { intro: 0.65, verse: 0.85, chorus: 1.0, bridge: 0.8, outro: 0.55 };
 const GENRES = Object.keys(PROGRESSIONS);
 /* Full band: every song gets a real lineup, not just a pad + beat. */
 const INSTRUMENTS = ['Drums', 'Bass', 'Guitar', 'Piano', 'Keys', 'Strings', 'Synth', '808s'];
@@ -211,11 +213,20 @@ function buildSong(settings, lyricsText, voiceProfile){
   const lineBeats = 8;
   let totalBars = 0; for (const s of plan) totalBars += barsFor[s];
   const durationSec = totalBars * 4 * beat;
-  /* voice tuning: shift melody so its middle sits near the singer's range */
-  let shift = 0;
+  /* one section name per bar — the mixer uses it for dynamics + fills */
+  const barSections = [];
+  for (const s of plan) for (let b = 0; b < barsFor[s]; b++) barSections.push(s);
+  /* final chorus lift: the last chorus sings a whole step higher */
+  let lastChorusIdx = -1; plan.forEach((s, i) => { if (s === 'chorus') lastChorusIdx = i; });
+  /* voice tuning: shift melody so its middle sits near the singer's range,
+     then keep every note inside the recorded range (octave-shifted) so the
+     vocal stays close to YOUR voice, not a generic singer's. */
+  let shift = 0, vLow = 0, vHigh = 0;
   if (voiceProfile && voiceProfile.baseHz){
     const singMidi = freqToMidi(voiceProfile.baseHz * 2);
     shift = clamp(Math.round(singMidi - (key.tonic + 5)), -7, 7);
+    vLow = voiceProfile.lowHz ? Math.round(freqToMidi(voiceProfile.lowHz * 2)) : Math.round(singMidi) - 12;
+    vHigh = voiceProfile.highHz ? Math.round(freqToMidi(voiceProfile.highHz * 2)) : Math.round(singMidi) + 12;
   }
   /* chords, one per bar, cycling the genre progression */
   const chords = [];
@@ -228,8 +239,10 @@ function buildSong(settings, lyricsText, voiceProfile){
   /* melody: walk the scale, one note per syllable, chorus sits higher */
   const melody = []; const lineEvents = [];
   let beatCursor = 0; let verseIdx = 0, chorusIdx = 0, bridgeIdx = 0;
-  for (const secName of plan){
+  for (let secOrdinal = 0; secOrdinal < plan.length; secOrdinal++){
+    const secName = plan[secOrdinal];
     const bars = barsFor[secName];
+    const lift = (secName === 'chorus' && secOrdinal === lastChorusIdx) ? 2 : 0;
     if (secName === 'intro' || secName === 'outro'){ beatCursor += bars * 4; continue; }
     const pool = sectionLines[secName];
     const idxRef = secName === 'chorus' ? 'chorusIdx' : secName === 'bridge' ? 'bridgeIdx' : 'verseIdx';
@@ -249,9 +262,10 @@ function buildSong(settings, lyricsText, voiceProfile){
           const isLast = wi === words.length - 1 && s === syl - 1;
           if (isLast) degPos = pick(rng, [0, 0, 2]); /* last syllable resolves to tonic/third */
           else { const step = pick(rng, [-2, -1, -1, 0, 1, 1, 2]); degPos = clamp(degPos + step, 0, 9); }
-          const midi = key.tonic + scale[((degPos % 7) + 7) % 7] + 12 * Math.floor(degPos / 7) + shift;
+          let midi = key.tonic + scale[((degPos % 7) + 7) % 7] + 12 * Math.floor(degPos / 7) + shift + lift;
+          if (vLow && vHigh){ while (midi > vHigh) midi -= 12; while (midi < vLow) midi += 12; }
           const dur = clamp(lineBeats / Math.max(1, totalSyl), 0.5, 2);
-          melody.push({ midi, startBeat: noteCursor, dur, word, line: lineEvents.length - 1 });
+          melody.push({ midi, lift, startBeat: noteCursor, dur, word, line: lineEvents.length - 1 });
           noteCursor += dur;
         }
       });
@@ -271,7 +285,8 @@ function buildSong(settings, lyricsText, voiceProfile){
     styleDesc: settings.styleDesc || '',
     variety: settings.variety || 3, instrumental: !!settings.instrumental,
     lyrics: lyricsText, seed: settings.seed || 0, hue: hashStr(settings.title || 'song') % 360,
-    bars: totalBars, beat, chords, melody, lineEvents,
+    bars: totalBars, beat, chords, melody, lineEvents, barSections,
+    voiceRange: (vLow && vHigh) ? { low: vLow, high: vHigh } : null,
     plays: 0, favorite: false, createdAt: Date.now(),
     audioRefName: settings.audioRefName || '', voiceHz: voiceProfile ? voiceProfile.baseHz : 0,
   };
@@ -373,21 +388,44 @@ function chordPad(ctx, dest, t, midis, dur, kind, vol){
     o.start(t); o2.start(t); o.stop(t + dur + 0.3); o2.stop(t + dur + 0.3);
   }
 }
-function vocalNote(ctx, dest, t, midi, dur, style, vol){
+/* Lead vocal, built to sound like a real singer in YOUR range, not a beep:
+   a doubled voice (main + a slightly detuned double, like a studio double
+   track), a formant peak shaped by your base pitch, a short glide into each
+   note (portamento — real singers slide, they don't teleport), vibrato on
+   longer notes, and a breath of air at the start of soft notes. */
+function vocalNote(ctx, dest, t, midi, dur, style, vol, prevMidi, warmHz){
   const freq = midiToFreq(midi);
-  const o = ctx.createOscillator(), g = ctx.createGain(), f = ctx.createBiquadFilter();
-  o.type = style === 'Soft / airy' ? 'sine' : style === 'Autotune' ? 'square' : 'sawtooth';
-  o.frequency.setValueAtTime(freq, t);
-  if (style === 'Autotune'){ /* hard-tuned: snap, almost no slide */ }
-  f.type = 'lowpass'; f.frequency.value = style === 'Raspy' ? 3200 : 2400; f.Q.value = 1.2;
+  const prevFreq = prevMidi != null ? midiToFreq(prevMidi) : freq;
+  const type = style === 'Soft / airy' ? 'sine' : style === 'Autotune' ? 'square' : 'sawtooth';
+  const g = ctx.createGain();
+  const f = ctx.createBiquadFilter();
+  f.type = 'lowpass'; f.frequency.value = style === 'Raspy' ? 3200 : clamp((warmHz || 200) * 12, 1800, 3600); f.Q.value = 1.2;
+  const formant = ctx.createBiquadFilter();
+  formant.type = 'peaking'; formant.frequency.value = clamp((warmHz || 200) * 5, 700, 1500); formant.Q.value = 1.0; formant.gain.value = 4;
   const peak = (style === 'Powerful' ? 0.5 : style === 'Soft / airy' ? 0.3 : 0.4) * vol;
   g.gain.setValueAtTime(0.0001, t); g.gain.exponentialRampToValueAtTime(peak, t + 0.07);
   g.gain.setValueAtTime(peak, t + Math.max(0.09, dur - 0.14)); g.gain.exponentialRampToValueAtTime(0.001, t + dur);
-  if (style !== 'Autotune'){
-    const lfo = ctx.createOscillator(), lg = ctx.createGain();
-    lfo.frequency.value = 5.5; lg.gain.value = 7; lfo.connect(lg); lg.connect(o.detune); lfo.start(t); lfo.stop(t + dur + 0.05);
+  const sing = (detune, gainMul) => {
+    const o = ctx.createOscillator();
+    o.type = type;
+    if (prevMidi != null && style !== 'Autotune'){ o.frequency.setValueAtTime(prevFreq, t); o.frequency.linearRampToValueAtTime(freq, t + 0.07); }
+    else o.frequency.setValueAtTime(freq, t);
+    o.detune.value = detune;
+    const og = ctx.createGain(); og.gain.value = gainMul;
+    if (style !== 'Autotune' && dur > 0.4){
+      const lfo = ctx.createOscillator(), lg = ctx.createGain();
+      lfo.frequency.value = 5.5; lg.gain.value = 7; lfo.connect(lg); lg.connect(o.detune); lfo.start(t); lfo.stop(t + dur + 0.05);
+    }
+    o.connect(og); og.connect(formant); o.start(t); o.stop(t + dur + 0.05);
+  };
+  sing(0, 1); sing(8, 0.45); /* the double track */
+  formant.connect(f); f.connect(g); g.connect(dest);
+  if (style === 'Soft / airy' || style === 'Smooth'){
+    const src = ctx.createBufferSource(); src.buffer = noiseBuffer(ctx); src.loop = true;
+    const bf = ctx.createBiquadFilter(); bf.type = 'bandpass'; bf.frequency.value = 3200; bf.Q.value = 0.6;
+    const bg = ctx.createGain(); bg.gain.setValueAtTime(0.0001, t); bg.gain.linearRampToValueAtTime((style === 'Soft / airy' ? 0.035 : 0.02) * vol, t + 0.05); bg.gain.exponentialRampToValueAtTime(0.001, t + Math.min(dur, 0.3));
+    src.connect(bf); bf.connect(bg); bg.connect(dest); src.start(t); src.stop(t + Math.min(dur, 0.3) + 0.05);
   }
-  o.connect(f); f.connect(g); g.connect(dest); o.start(t); o.stop(t + dur + 0.05);
   if (style === 'Raspy'){
     const src = ctx.createBufferSource(); src.buffer = noiseBuffer(ctx); src.loop = true;
     const bf = ctx.createBiquadFilter(); bf.type = 'bandpass'; bf.frequency.value = 1400; bf.Q.value = 0.7;
@@ -409,22 +447,28 @@ function scheduleSong(ctx, dest, song, opts){
   const inst = new Set(instList);
   const has = name => inst.has(name);
   const hasKeys = has('Piano') || has('Keys') || has('Strings') || has('Synth');
+  const sections = song.barSections || [];
+  const secOf = bar => sections[bar] || 'verse';
+  const hrng = mulberry32(hashStr(song.id || 'song')); /* humanize: same song, same feel, every render */
   const totalBeats = song.bars * 4;
   for (let bar = 0; bar < song.bars; bar++){
     const barStartBeat = bar * 4; const barT = t0 + (barStartBeat - fromBeat) * beat;
     if (barT + barSec < t0) continue;
+    const barVol = energyVol * (SECTION_GAIN[secOf(bar)] || 1);
+    const isSectionStart = bar === 0 || secOf(bar) !== secOf(bar - 1);
+    const isLastBarOfSection = bar + 1 < song.bars && secOf(bar + 1) !== secOf(bar);
     const chord = song.chords[bar];
     if (chord){
       if (hasKeys){
         const padKind = has('Piano') && !has('Strings') && !has('Synth') ? 'pluck' : 'pad';
-        chordPad(ctx, dest, Math.max(t0, barT), chord.tones, barSec, padKind, energyVol);
+        chordPad(ctx, dest, Math.max(t0, barT), chord.tones, barSec, padKind, barVol);
       }
       if (has('Bass')){
-        bassNote(ctx, dest, Math.max(t0, barT), chord.rootMidi - 24, barSec * 0.9, energyVol);
-        bassNote(ctx, dest, Math.max(t0, barT + barSec / 2), chord.rootMidi - 12, barSec * 0.4, energyVol * 0.7);
+        bassNote(ctx, dest, Math.max(t0, barT), chord.rootMidi - 24, barSec * 0.9, barVol);
+        bassNote(ctx, dest, Math.max(t0, barT + barSec / 2), chord.rootMidi - 12 + 7, barSec * 0.4, barVol * 0.7); /* walk up to the fifth */
       }
       if (has('808s')){
-        subBassNote(ctx, dest, Math.max(t0, barT), chord.rootMidi - 24, barSec * 0.9, energyVol);
+        subBassNote(ctx, dest, Math.max(t0, barT), chord.rootMidi - 24, barSec * 0.9, barVol);
       }
       if (has('Guitar')){
         const gStyle = song.guitarStyle || 'electric clean';
@@ -432,29 +476,41 @@ function scheduleSong(ctx, dest, song, opts){
         strums.forEach((s, si) => {
           const gt = Math.max(t0, barT + s * (barSec / 16));
           const tone = chord.tones[(si + (s % 3)) % chord.tones.length];
-          guitarNote(ctx, dest, gt, tone + 12, barSec / strums.length * 1.8, gStyle, energyVol * 0.9);
+          guitarNote(ctx, dest, gt, tone + 12, barSec / strums.length * 1.8, gStyle, barVol * 0.9);
         });
       }
-      if (bar % 8 === 0 && has('Drums')) crashHit(ctx, dest, Math.max(t0, barT), energyVol);
+      if (isSectionStart && has('Drums')) crashHit(ctx, dest, Math.max(t0, barT), barVol);
     }
     if (has('Drums')){
       for (let step = 0; step < 16; step++){
-        const st = barT + step * (barSec / 16); if (st < t0) continue;
-        if (drums.kick[step]) drumHit(ctx, dest, st, 'kick', energyVol);
-        if (drums.snare[step]) drumHit(ctx, dest, st, 'snare', energyVol);
-        if (drums.hat[step]) drumHit(ctx, dest, st, 'hat', energyVol * 0.9);
+        const st = barT + step * (barSec / 16) + (hrng() - 0.5) * 0.016; if (st < t0) continue;
+        const v = barVol * (0.85 + hrng() * 0.15); /* no robot drummer: every hit lands a little differently */
+        if (drums.kick[step]) drumHit(ctx, dest, st, 'kick', v);
+        if (drums.snare[step]) drumHit(ctx, dest, st, 'snare', v);
+        if (drums.hat[step]) drumHit(ctx, dest, st, 'hat', v * 0.9);
+      }
+      if (isLastBarOfSection){
+        const ft = barT + 12 * (barSec / 16);
+        drumHit(ctx, dest, Math.max(t0, ft), 'snare', barVol);
+        drumHit(ctx, dest, Math.max(t0, ft + barSec / 16), 'snare', barVol);
+        drumHit(ctx, dest, Math.max(t0, ft + 2 * (barSec / 16)), 'kick', barVol);
+        drumHit(ctx, dest, Math.max(t0, ft + 3 * (barSec / 16)), 'snare', barVol * 1.1);
       }
     }
   }
   const lineEvents = [];
   if (!song.instrumental){
+    let prevMidi = null;
     for (const n of song.melody){
       const nt = t0 + (n.startBeat - fromBeat) * beat; if (nt + n.dur * beat < t0) continue;
-      vocalNote(ctx, dest, Math.max(t0, nt), n.midi, n.dur * beat, song.vocalStyle, energyVol);
       const line = song.lineEvents[n.line];
+      const secVol = energyVol * (SECTION_GAIN[line ? line.section : 'verse'] || 1);
+      vocalNote(ctx, dest, Math.max(t0, nt), n.midi, n.dur * beat, song.vocalStyle, secVol, prevMidi, song.voiceHz || 0);
       if (line && /chorus/i.test(line.section)){
-        vocalNote(ctx, dest, Math.max(t0, nt), n.midi + 4, n.dur * beat, song.vocalStyle, energyVol * 0.35);
+        vocalNote(ctx, dest, Math.max(t0, nt), n.midi + 4, n.dur * beat, song.vocalStyle, secVol * 0.35, null, song.voiceHz || 0);
+        if (n.lift) vocalNote(ctx, dest, Math.max(t0, nt), n.midi + 7, n.dur * beat, song.vocalStyle, secVol * 0.22, null, song.voiceHz || 0);
       }
+      prevMidi = n.midi;
     }
   }
   for (const le of song.lineEvents){
@@ -1135,6 +1191,9 @@ function init(){
   $('homeVer').textContent = 'AI Song Maker v' + CURRENT_VERSION + ' · Merlin builds your songs — no extra app or key needed.';
   if (audioRef){ $('audioRefName').textContent = audioRef.name; $('btnAudio').classList.add('on'); }
   buildChips(); refreshPick(); wireNav(); wireCreate(); wireLibrary(); wirePlayer(); wireVoice(); wireUpdate();
+  /* Any tap anywhere warms the audio up — the Play button never has to
+     fight Android's tap-only audio rule on its own. */
+  document.addEventListener('pointerdown', () => warmAudio());
   renderVoice(); renderLibrary(); renderHome(); renderSearch();
   checkUpdate(false);
 }
