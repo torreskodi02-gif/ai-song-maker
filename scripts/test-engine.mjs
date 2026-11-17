@@ -13,7 +13,7 @@ assert.ok(start >= 0 && end > start, 'pure markers present in app.js');
 const pure = src.slice(start, end);
 const fn = new Function(pure + `
 ;return { CURRENT_VERSION, REPO, LATEST_API, APK_URL, midiToFreq, midiToName, freqToMidi,
-  clamp, hashStr, mulberry32, fmtTime, KEYS, PROGRESSIONS, GENRES, INSTRUMENTS,
+  clamp, hashStr, mulberry32, fmtTime, extractVersion, KEYS, PROGRESSIONS, GENRES, INSTRUMENTS,
   BAND_LINEUPS, smartPick,
   keywordsFromPrompt, titleFromPrompt, generateLyrics, parseLyrics, syllablesOf,
   buildSong, describeStyle };`);
@@ -87,7 +87,14 @@ assert.equal(bandSong.guitarStyle, 'electric', 'song keeps guitar style');
 assert.ok(bandSong.smartPick && bandSong.smartPick.reason, 'song keeps Merlin pick');
 console.log('band carry-through OK:', bandSong.band.join(' + '));
 
-// 8. instrumental flag + title + fmtTime
+// 8. auto-update: the version comes from the release title, never the tag
+assert.equal(M.extractVersion('AI Song Maker v1.1.2'), '1.1.2');
+assert.equal(M.extractVersion('v2.0.0'), '2.0.0');
+assert.equal(M.extractVersion('latest'), '', 'a bare "latest" tag is not a version');
+assert.equal(M.extractVersion('AI Song Maker (newest build)'), '', 'old title has no version');
+console.log('extractVersion OK');
+
+// 9. instrumental flag + title + fmtTime
 assert.equal(M.fmtTime(125), '2:05');
 assert.equal(M.titleFromPrompt('sunday morning with my girl'), 'Sunday Morning With My Girl');
 assert.equal(M.midiToName(69), 'A4');

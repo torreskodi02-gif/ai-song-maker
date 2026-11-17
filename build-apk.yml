@@ -83,6 +83,11 @@ jobs:
         env:
           GH_TOKEN: ${{ github.token }}
         run: |
+          VER=$(python3 -c "import json; print(json.load(open('package.json'))['version'])")
           cp android/app/build/outputs/apk/debug/app-debug.apk ai-song-maker.apk
           gh release delete latest --yes --cleanup-tag 2>/dev/null || true
-          gh release create latest ai-song-maker.apk --target "$GITHUB_SHA" --title "AI Song Maker (newest build)" --notes "Built from commit ${GITHUB_SHA::7} on $(date -u '+%Y-%m-%d %H:%M') UTC" --latest
+          # The version MUST be in the release title: the tag is literally
+          # "latest", and the app reads the version from the title to decide
+          # whether an update exists. A title without a version = no update
+          # banner ever (that was the v1.1.1 auto-update bug).
+          gh release create latest ai-song-maker.apk --target "$GITHUB_SHA" --title "AI Song Maker v${VER}" --notes "Built from commit ${GITHUB_SHA::7} on $(date -u '+%Y-%m-%d %H:%M') UTC" --latest

@@ -8,7 +8,7 @@
    ========================================================================== */
 'use strict';
 /* __PURE_START__ */
-const CURRENT_VERSION = '1.1.1';
+const CURRENT_VERSION = '1.1.2';
 const REPO = 'torreskodi02-gif/ai-song-maker';
 const LATEST_API = 'https://api.github.com/repos/' + REPO + '/releases/latest';
 const APK_URL = 'https://github.com/' + REPO + '/releases/download/latest/ai-song-maker.apk';
@@ -22,6 +22,13 @@ function hashStr(s){ let h = 0; for (let i = 0; i < s.length; i++){ h = (h * 31 
 function mulberry32(seed){ let a = seed >>> 0; return function(){ a |= 0; a = (a + 0x6D2B79F5) | 0; let t = Math.imul(a ^ (a >>> 15), 1 | a); t = (t + Math.imul(t ^ (t >>> 7), 61 | t)) ^ t; return ((t ^ (t >>> 14)) >>> 0) / 4294967296; }; }
 function pick(rng, arr){ return arr[Math.floor(rng() * arr.length)]; }
 function fmtTime(sec){ sec = Math.max(0, Math.round(sec)); return Math.floor(sec / 60) + ':' + String(sec % 60).padStart(2, '0'); }
+/* Pull a "1.2.3" version out of a release name/tag like "AI Song Maker v1.2.3"
+   or "v1.2.3". Returns '' when there is no version in the text — a bare
+   tag like "latest" is NOT a version. */
+function extractVersion(str){
+  const m = String(str || '').match(/(\d+)\.(\d+)\.(\d+)/);
+  return m ? m[0] : '';
+}
 
 /* --- music theory: keys, scales, per-genre chord progressions --- */
 const KEYS = {
@@ -1067,6 +1074,7 @@ function wireLibrary(){
 /* ================= AUTO-UPDATE (GitHub, QS pattern) ================= */
 function cmpVer(a, b){
   const pa = String(a).replace(/^v/, '').split('.').map(Number), pb = String(b).replace(/^v/, '').split('.').map(Number);
+  if (pa.some(isNaN) || pb.some(isNaN)) return 0; /* unparseable version: never claim an update */
   for (let i = 0; i < 3; i++){ const d = (pa[i] || 0) - (pb[i] || 0); if (d) return d; }
   return 0;
 }
@@ -1083,7 +1091,9 @@ async function checkUpdate(announce){
     const res = await fetch(LATEST_API, { headers: { Accept: 'application/vnd.github+json' }, signal: ctrl.signal });
     if (!res.ok) throw new Error('HTTP ' + res.status);
     const d = await res.json();
-    const latest = String(d.tag_name || d.name || '').replace(/^v/, '');
+    /* The release tag is literally "latest" — the version lives in the
+       release title ("AI Song Maker v1.1.2"), so read it from there first. */
+    const latest = extractVersion(d.name) || extractVersion(d.tag_name) || '';
     if (!latest) return;
     const inst = await installedVersion();
     if (cmpVer(latest, inst) > 0){
