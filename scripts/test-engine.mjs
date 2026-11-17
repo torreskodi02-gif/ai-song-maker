@@ -14,6 +14,7 @@ const pure = src.slice(start, end);
 const fn = new Function(pure + `
 ;return { CURRENT_VERSION, REPO, LATEST_API, APK_URL, midiToFreq, midiToName, freqToMidi,
   clamp, hashStr, mulberry32, fmtTime, KEYS, PROGRESSIONS, GENRES, INSTRUMENTS,
+  BAND_LINEUPS, smartPick,
   keywordsFromPrompt, titleFromPrompt, generateLyrics, parseLyrics, syllablesOf,
   buildSong, describeStyle };`);
 const M = fn();
@@ -62,7 +63,31 @@ const med = arr => { const s = arr.map(n => n.midi).sort((a, b) => a - b); retur
 assert.ok(med(low.melody) < med(high.melody), `voice tuning shifts melody: low ${med(low.melody)} < high ${med(high.melody)}`);
 console.log('voice tuning OK: median MIDI low-voice', med(low.melody), 'vs high-voice', med(high.melody));
 
-// 6. instrumental flag + title + fmtTime
+// 6. Merlin Smart Pick: every genre gets a full band, tempo in range, a reason
+for (const g of M.GENRES){
+  const p = M.smartPick(g, 'Happy', 'Sunday morning with my girl', 2);
+  assert.ok(p.tempo >= 60 && p.tempo <= 180, g + ' pick tempo in range');
+  assert.ok(p.instruments.includes('Drums'), g + ' band has drums');
+  assert.ok(p.instruments.includes('Bass') || p.instruments.includes('808s'), g + ' band has bass/808s');
+  assert.ok(p.reason && p.reason.length > 10, g + ' pick has a reason');
+  assert.ok(p.vocalStyle, g + ' pick has a vocal style');
+  assert.deepEqual(p.instruments, M.BAND_LINEUPS[g], g + ' pick uses the genre lineup');
+}
+assert.ok(M.smartPick('Hip-hop', 'Hype', '', 3).tempo > M.smartPick('Hip-hop', 'Sad', '', 1).tempo, 'Hype is faster than Sad');
+assert.ok(M.smartPick('Pop', 'Happy', '', 2).instruments.includes('Guitar'), 'Pop band has guitar');
+assert.ok(M.smartPick('Rock', 'Hype', '', 3).guitarStyle === 'electric', 'Rock guitar is electric');
+console.log('smartPick OK:', M.GENRES.map(g => `${g} ${M.smartPick(g, 'Happy', '', 2).tempo} BPM`).join(', '));
+
+// 7. buildSong carries the band + pick through
+const bandSong = M.buildSong({ title: 'Band', genre: 'Rock', mood: 'Hype', tempo: 128, key: 'A minor',
+  durationTarget: 80, energy: 3, vocalStyle: 'Powerful', instruments: ['Drums', 'Bass', 'Guitar', 'Piano'],
+  guitarStyle: 'electric', seed: 7 }, lyrics, voice);
+assert.ok(bandSong.band.includes('Guitar'), 'song keeps its band');
+assert.equal(bandSong.guitarStyle, 'electric', 'song keeps guitar style');
+assert.ok(bandSong.smartPick && bandSong.smartPick.reason, 'song keeps Merlin pick');
+console.log('band carry-through OK:', bandSong.band.join(' + '));
+
+// 8. instrumental flag + title + fmtTime
 assert.equal(M.fmtTime(125), '2:05');
 assert.equal(M.titleFromPrompt('sunday morning with my girl'), 'Sunday Morning With My Girl');
 assert.equal(M.midiToName(69), 'A4');

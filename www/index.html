@@ -57,6 +57,13 @@
     </div>
     <input type="file" id="audioFile" accept="audio/*" class="hidden">
 
+    <div class="create-tabs" role="tablist" aria-label="Create sections">
+      <button class="ctab active" data-ctab="lyrics" role="tab">Lyrics</button>
+      <button class="ctab" data-ctab="styles" role="tab">Styles</button>
+      <button class="ctab" data-ctab="voice" role="tab">Voice</button>
+      <button class="ctab" data-ctab="band" role="tab">Band</button>
+    </div>
+    <div class="ctab-panel" id="ctab-lyrics">
     <div class="sheet-card" id="lyricsCard">
       <button class="sheet-head" data-collapse="lyricsCard"><span class="chev">⌄</span> Lyrics</button>
       <div class="sheet-body">
@@ -71,6 +78,8 @@
       </div>
     </div>
 
+    </div>
+    <div class="ctab-panel hidden" id="ctab-styles">
     <div class="sheet-card" id="stylesCard">
       <button class="sheet-head" data-collapse="stylesCard"><span class="chev">⌄</span> Styles</button>
       <div class="sheet-body">
@@ -131,6 +140,33 @@
           </select>
         </div>
         <div class="field"><label>Instruments</label><div class="chips" id="instChips"></div></div>
+      </div>
+    </div>
+    </div>
+    <div class="ctab-panel hidden" id="ctab-voice">
+      <div class="sheet-card">
+        <div class="sheet-head"><span class="chev">⌄</span> My Voice</div>
+        <div class="sheet-body">
+          <p class="muted" id="voiceTabStatus">No voice profile yet — songs use a neutral pitch until you record.</p>
+          <div class="btn-row"><button class="btn" id="btnVoiceTabRecord">● Record my voice</button><button class="btn ghost" id="btnVoiceTabProfile">Open My Voice</button></div>
+          <p class="muted small" style="margin-top:10px">Your recording never leaves your phone. Only your voice is used for your songs. The vocal is a synthesized vocal tuned to your range — not a studio voice clone.</p>
+        </div>
+      </div>
+    </div>
+    <div class="ctab-panel hidden" id="ctab-band">
+      <div class="sheet-card">
+        <div class="sheet-head"><span class="chev">⌄</span> Full Band</div>
+        <div class="sheet-body">
+          <div class="pick-box" id="pickBox">
+            <b>✦ Merlin's pick</b>
+            <p id="pickText">Pick a genre and mood — Merlin will choose the best tempo, key and band.</p>
+            <div class="btn-row"><button class="btn gold small" id="btnUsePick">Use Merlin's pick</button><button class="btn ghost small" id="btnPickManual">I'll pick myself</button></div>
+            <label class="pick-auto"><input type="checkbox" id="pickAuto" checked> Let Merlin pick automatically when I change genre or mood</label>
+          </div>
+          <div class="field" style="margin-top:14px"><label>Band lineup — tap to add / remove</label><div class="chips" id="bandChips"></div></div>
+          <p class="muted small" id="guitarStyleOut">Guitar: electric clean</p>
+          <p class="muted small">Drums, bass, guitar, piano, keys, strings and 808s are all real tracks in the song — turn any of them off and the mix changes.</p>
+        </div>
       </div>
     </div>
 

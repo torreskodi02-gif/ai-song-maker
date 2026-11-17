@@ -218,5 +218,16 @@ input[type=range]{width:100%;accent-color:var(--pink)}
 .menu-pop button:hover{background:var(--pill)}
 .menu-pop button.danger{color:var(--ver)}
 
+/* ---------- Create tabs: Lyrics / Styles / Voice / Band ---------- */
+.create-tabs{display:flex;gap:8px;margin:2px 0 14px}
+.ctab{flex:1;background:var(--pill);border:0;border-radius:999px;padding:11px 6px;font-size:14.5px;font-weight:700;color:var(--muted)}
+.ctab.active{background:#fff;color:#111}
+.ctab-panel{margin-bottom:2px}
+.pick-box{background:#17130a;border-radius:var(--radius-sm);padding:14px 15px}
+.pick-box b{color:var(--gold-1)}
+.pick-box p{margin:8px 0 0;font-size:14.5px}
+.pick-auto{display:flex;align-items:center;gap:8px;font-size:13px;color:var(--muted);margin-top:12px;text-transform:none;letter-spacing:0}
+.pick-auto input{accent-color:var(--pink);width:18px;height:18px}
+
 /* ---------- toast ---------- */
 .toast{position:fixed;left:50%;bottom:calc(var(--nav-h) + 76px);transform:translateX(-50%);background:#fff;color:#111;padding:11px 18px;border-radius:999px;font-weight:700;font-size:14px;z-index:99;box-shadow:0 8px 30px rgba(0,0,0,.5);white-space:nowrap;max-width:92vw;overflow:hidden;text-overflow:ellipsis}

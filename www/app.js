@@ -8,7 +8,7 @@
    ========================================================================== */
 'use strict';
 /* __PURE_START__ */
-const CURRENT_VERSION = '1.0.0';
+const CURRENT_VERSION = '1.1.0';
 const REPO = 'torreskodi02-gif/ai-song-maker';
 const LATEST_API = 'https://api.github.com/repos/' + REPO + '/releases/latest';
 const APK_URL = 'https://github.com/' + REPO + '/releases/download/latest/ai-song-maker.apk';
@@ -49,7 +49,50 @@ const PROGRESSIONS = {
   'Gospel':    { minor: false, prog: [0, 5, 3, 4], tempo: 90,  drum: 'rnb'  },
 };
 const GENRES = Object.keys(PROGRESSIONS);
-const INSTRUMENTS = ['Piano', 'Guitar', '808s', 'Strings', 'Synth', 'Drums'];
+/* Full band: every song gets a real lineup, not just a pad + beat. */
+const INSTRUMENTS = ['Drums', 'Bass', 'Guitar', 'Piano', 'Keys', 'Strings', 'Synth', '808s'];
+const BAND_LINEUPS = {
+  'Hip-hop':   ['Drums', '808s', 'Piano', 'Synth'],
+  'R&B':       ['Drums', 'Bass', 'Guitar', 'Piano', 'Strings'],
+  'Pop':       ['Drums', 'Bass', 'Guitar', 'Piano', 'Synth'],
+  'Rock':      ['Drums', 'Bass', 'Guitar', 'Piano'],
+  'Country':   ['Drums', 'Bass', 'Guitar', 'Piano'],
+  'Afrobeats': ['Drums', 'Bass', 'Guitar', 'Keys', 'Synth'],
+  'EDM':       ['Drums', 'Bass', 'Synth', 'Keys'],
+  'Lo-fi':     ['Drums', 'Bass', 'Guitar', 'Piano'],
+  'Gospel':    ['Drums', 'Bass', 'Piano', 'Strings', 'Guitar'],
+};
+const GUITAR_STYLE = {
+  'Hip-hop': 'electric clean', 'R&B': 'electric clean', 'Pop': 'electric clean',
+  'Rock': 'electric', 'Country': 'acoustic', 'Afrobeats': 'electric clean',
+  'EDM': 'electric clean', 'Lo-fi': 'acoustic', 'Gospel': 'acoustic',
+};
+const GENRE_KEYS = {
+  'Hip-hop': 'A minor', 'R&B': 'E minor', 'Pop': 'C major', 'Rock': 'A minor',
+  'Country': 'G major', 'Afrobeats': 'D minor', 'EDM': 'A minor',
+  'Lo-fi': 'D minor', 'Gospel': 'F major',
+};
+const RELATIVE_MINOR = { 'C major': 'A minor', 'G major': 'E minor', 'F major': 'D minor', 'D major': 'B minor', 'A major': 'F# minor', 'Bb major': 'G minor' };
+const MOOD_TEMPO_ADJ = { Happy: 4, Chill: -8, Romantic: -4, Sad: -10, Hype: 8, Motivational: 4, Confident: 2, Peaceful: -12 };
+const MOOD_VOCAL = { Happy: 'Smooth', Chill: 'Soft / airy', Romantic: 'Smooth', Sad: 'Soft / airy', Hype: 'Powerful', Motivational: 'Powerful', Confident: 'Powerful', Peaceful: 'Soft / airy' };
+/* Merlin Smart Pick: given genre + mood + lyrics, pick the best tempo, key,
+   vocal style and full-band lineup — with a plain reason, so the user can
+   trust it or override any single piece. */
+function smartPick(genre, mood, lyricsText, energy){
+  const g = PROGRESSIONS[genre] || PROGRESSIONS.Pop;
+  const e = energy || 2;
+  let tempo = clamp(g.tempo + (MOOD_TEMPO_ADJ[mood] || 0) + (e === 3 ? 4 : e === 1 ? -4 : 0), 60, 180);
+  let key = GENRE_KEYS[genre] || 'A minor';
+  const text = (lyricsText || '').toLowerCase();
+  if (/love|heart|girl|baby|darling/.test(text) && !/night|city|street/.test(text)) key = 'C major';
+  if (/night|city|street|rain|goodbye|alone/.test(text)) key = GENRE_KEYS[genre] && KEYS[GENRE_KEYS[genre]] && KEYS[GENRE_KEYS[genre]].minor ? GENRE_KEYS[genre] : (RELATIVE_MINOR[key] || 'A minor');
+  if ((mood === 'Sad' || mood === 'Chill') && !KEYS[key].minor) key = RELATIVE_MINOR[key] || 'A minor';
+  if (mood === 'Happy' && KEYS[key].minor && !/night|rain|goodbye/.test(text)) key = 'C major';
+  const instruments = (BAND_LINEUPS[genre] || BAND_LINEUPS.Pop).slice();
+  const vocalStyle = MOOD_VOCAL[mood] || 'Smooth';
+  const reason = `${genre} + ${mood.toLowerCase()} mood → ${tempo} BPM in ${key}, with ${instruments.join(', ')}`;
+  return { genre, mood, tempo, key, instruments, vocalStyle, guitarStyle: GUITAR_STYLE[genre] || 'electric clean', energy: e, reason };
+}
 const STYLE_TAGS = ['ethereal', 'dreamy', 'punchy', 'smooth', 'raw', 'anthemic', 'chill', 'euphoric'];
 const MOOD_WORDS = {
   Happy: ['sunshine', 'good times', 'smiling'], Chill: ['slow nights', 'easy air', 'no rush'],
@@ -209,12 +252,16 @@ function buildSong(settings, lyricsText, voiceProfile){
     if (secName === 'chorus') chorusIdx = idx; else if (secName === 'bridge') bridgeIdx = idx; else verseIdx = idx;
     beatCursor += bars * 4;
   }
+  const songPick = settings.smartPick || smartPick(settings.genre, settings.mood, lyricsText, settings.energy);
   return {
     id: 's' + Date.now().toString(36) + Math.floor(rng() * 1e6).toString(36),
     title: settings.title || 'Untitled', genre: settings.genre, mood: settings.mood,
     tempo: settings.tempo, key: settings.key, durationSec: Math.round(durationSec),
     energy: settings.energy, vocalStyle: settings.vocalStyle,
-    instruments: settings.instruments || [], styleDesc: settings.styleDesc || '',
+    instruments: (settings.instruments && settings.instruments.length ? settings.instruments : songPick.instruments) || [],
+    guitarStyle: settings.guitarStyle || songPick.guitarStyle,
+    band: songPick.instruments, smartPick: songPick,
+    styleDesc: settings.styleDesc || '',
     variety: settings.variety || 3, instrumental: !!settings.instrumental,
     lyrics: lyricsText, seed: settings.seed || 0, hue: hashStr(settings.title || 'song') % 360,
     bars: totalBars, beat, chords, melody, lineEvents,
@@ -262,6 +309,42 @@ function drumHit(ctx, dest, t, kind, vol){
     const g = ctx.createGain(); g.gain.setValueAtTime(0.16 * vol, t); g.gain.exponentialRampToValueAtTime(0.001, t + 0.05);
     src.connect(f); f.connect(g); g.connect(dest); src.start(t); src.stop(t + 0.08);
   }
+}
+function crashHit(ctx, dest, t, vol){
+  const src = ctx.createBufferSource(); src.buffer = noiseBuffer(ctx);
+  const f = ctx.createBiquadFilter(); f.type = 'highpass'; f.frequency.value = 6000;
+  const g = ctx.createGain(); g.gain.setValueAtTime(0.28 * vol, t); g.gain.exponentialRampToValueAtTime(0.001, t + 0.9);
+  src.connect(f); f.connect(g); g.connect(dest); src.start(t); src.stop(t + 1.0);
+}
+/* Plucked-string guitar, Karplus-Strong: a burst of noise fed through a
+   delay loop tuned to the note. Acoustic = slower decay, electric = faster
+   decay with a touch of drive. Works in live and OfflineAudioContext. */
+function guitarPluckBuffer(ctx, midi, dur, style){
+  const sr = ctx.sampleRate, freq = midiToFreq(midi);
+  const len = Math.max(1, Math.floor(dur * sr));
+  const buf = ctx.createBuffer(1, len, sr);
+  const d = buf.getChannelData(0);
+  const N = Math.max(2, Math.round(sr / freq));
+  const rng = mulberry32((midi * 2654435761) >>> 0);
+  for (let i = 0; i < N && i < len; i++) d[i] = rng() * 2 - 1;
+  const decay = style === 'acoustic' ? 0.996 : 0.9935;
+  for (let i = N; i < len; i++) d[i] = decay * 0.5 * (d[i - N] + d[i - N + 1 < len ? i - N + 1 : i - N]);
+  const fade = Math.floor(sr * 0.08);
+  for (let i = 0; i < fade && len - 1 - i >= 0; i++) d[len - 1 - i] *= i / fade;
+  return buf;
+}
+function guitarNote(ctx, dest, t, midi, dur, style, vol){
+  const src = ctx.createBufferSource(); src.buffer = guitarPluckBuffer(ctx, midi, dur, style);
+  const g = ctx.createGain(); g.gain.setValueAtTime(0.5 * vol, t); g.gain.exponentialRampToValueAtTime(0.001, t + dur);
+  const f = ctx.createBiquadFilter(); f.type = 'lowpass'; f.frequency.value = style === 'acoustic' ? 4200 : 3400;
+  src.connect(f); f.connect(g); g.connect(dest); src.start(t); src.stop(t + dur);
+}
+function subBassNote(ctx, dest, t, midi, dur, vol){
+  const o = ctx.createOscillator(), g = ctx.createGain();
+  o.type = 'sine'; o.frequency.setValueAtTime(midiToFreq(midi), t); o.frequency.exponentialRampToValueAtTime(midiToFreq(midi) * 0.82, t + dur);
+  g.gain.setValueAtTime(0.0001, t); g.gain.exponentialRampToValueAtTime(0.65 * vol, t + 0.03);
+  g.gain.setValueAtTime(0.65 * vol, t + Math.max(0.05, dur - 0.1)); g.gain.exponentialRampToValueAtTime(0.001, t + dur);
+  o.connect(g); g.connect(dest); o.start(t); o.stop(t + dur + 0.05);
 }
 function bassNote(ctx, dest, t, midi, dur, vol){
   const o = ctx.createOscillator(), g = ctx.createGain();
@@ -313,22 +396,47 @@ function scheduleSong(ctx, dest, song, opts){
   const prog = PROGRESSIONS[song.genre] || PROGRESSIONS.Pop;
   const drums = DRUMS[prog.drum] || DRUMS.pop;
   const energyVol = 0.7 + 0.15 * (song.energy || 2);
-  const padKind = /Piano|Strings/.test((song.instruments || []).join(',')) ? 'pad' : (song.genre === 'Lo-fi' ? 'pluck' : 'pad');
+  /* Full band: only the instruments in the song's lineup play. An empty
+     lineup means "Merlin's full band" — never a silent track. */
+  const instList = (song.instruments && song.instruments.length ? song.instruments : (song.band || BAND_LINEUPS[song.genre] || BAND_LINEUPS.Pop));
+  const inst = new Set(instList);
+  const has = name => inst.has(name);
+  const hasKeys = has('Piano') || has('Keys') || has('Strings') || has('Synth');
   const totalBeats = song.bars * 4;
   for (let bar = 0; bar < song.bars; bar++){
     const barStartBeat = bar * 4; const barT = t0 + (barStartBeat - fromBeat) * beat;
     if (barT + barSec < t0) continue;
     const chord = song.chords[bar];
     if (chord){
-      chordPad(ctx, dest, Math.max(t0, barT), chord.tones, barSec, padKind, energyVol);
-      bassNote(ctx, dest, Math.max(t0, barT), chord.rootMidi - 24, barSec * 0.9, energyVol);
-      bassNote(ctx, dest, Math.max(t0, barT + barSec / 2), chord.rootMidi - 12, barSec * 0.4, energyVol * 0.7);
+      if (hasKeys){
+        const padKind = has('Piano') && !has('Strings') && !has('Synth') ? 'pluck' : 'pad';
+        chordPad(ctx, dest, Math.max(t0, barT), chord.tones, barSec, padKind, energyVol);
+      }
+      if (has('Bass')){
+        bassNote(ctx, dest, Math.max(t0, barT), chord.rootMidi - 24, barSec * 0.9, energyVol);
+        bassNote(ctx, dest, Math.max(t0, barT + barSec / 2), chord.rootMidi - 12, barSec * 0.4, energyVol * 0.7);
+      }
+      if (has('808s')){
+        subBassNote(ctx, dest, Math.max(t0, barT), chord.rootMidi - 24, barSec * 0.9, energyVol);
+      }
+      if (has('Guitar')){
+        const gStyle = song.guitarStyle || 'electric clean';
+        const strums = song.genre === 'Rock' ? [0, 2, 4, 6, 8, 10, 12, 14] : song.genre === 'Country' || song.genre === 'Lo-fi' ? [0, 4, 8, 12] : [0, 4, 8, 12];
+        strums.forEach((s, si) => {
+          const gt = Math.max(t0, barT + s * (barSec / 16));
+          const tone = chord.tones[(si + (s % 3)) % chord.tones.length];
+          guitarNote(ctx, dest, gt, tone + 12, barSec / strums.length * 1.8, gStyle, energyVol * 0.9);
+        });
+      }
+      if (bar % 8 === 0 && has('Drums')) crashHit(ctx, dest, Math.max(t0, barT), energyVol);
     }
-    for (let step = 0; step < 16; step++){
-      const st = barT + step * (barSec / 16); if (st < t0) continue;
-      if (drums.kick[step]) drumHit(ctx, dest, st, 'kick', energyVol);
-      if (drums.snare[step]) drumHit(ctx, dest, st, 'snare', energyVol);
-      if (drums.hat[step]) drumHit(ctx, dest, st, 'hat', energyVol * 0.9);
+    if (has('Drums')){
+      for (let step = 0; step < 16; step++){
+        const st = barT + step * (barSec / 16); if (st < t0) continue;
+        if (drums.kick[step]) drumHit(ctx, dest, st, 'kick', energyVol);
+        if (drums.snare[step]) drumHit(ctx, dest, st, 'snare', energyVol);
+        if (drums.hat[step]) drumHit(ctx, dest, st, 'hat', energyVol * 0.9);
+      }
     }
   }
   const lineEvents = [];
@@ -382,7 +490,7 @@ let songs = store.get('asm_songs_v1', []);
 let voiceProfile = store.get('asm_voice_v1', null);
 let audioRef = store.get('asm_audioref_v1', null);
 let currentSong = null, currentFilter = 'All', libraryQuery = '';
-let settings = { genre: 'Pop', mood: 'Happy', tempo: 100, key: 'A minor', durationTarget: 80, energy: 2, vocalStyle: 'Smooth', instruments: ['Piano', 'Drums'], variety: 3, instrumental: false, mode: 'advanced' };
+let settings = { genre: 'Pop', mood: 'Happy', tempo: 100, key: 'A minor', durationTarget: 80, energy: 2, vocalStyle: 'Smooth', instruments: ['Drums', 'Bass', 'Guitar', 'Piano', 'Synth'], guitarStyle: 'electric clean', variety: 3, instrumental: false, mode: 'advanced' };
 let toastTimer = null;
 function toast(msg){ const t = $('toast'); t.textContent = msg; t.classList.remove('hidden'); clearTimeout(toastTimer); toastTimer = setTimeout(() => t.classList.add('hidden'), 2600); }
 function esc(s){ return String(s == null ? '' : s).replace(/[&<>"']/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c])); }
@@ -412,6 +520,7 @@ function buildChips(){
       $('tempo').value = settings.tempo; $('tempoOut').textContent = settings.tempo + ' BPM';
       $('styleTag').textContent = pickStyleTag(g);
       buildChips();
+      applyPickIfAuto();
     });
     gc.appendChild(b);
   });
@@ -425,6 +534,57 @@ function buildChips(){
     });
     ic.appendChild(b);
   });
+  /* Band tab mirrors the same lineup — same settings, same toggles. */
+  const bc = $('bandChips');
+  if (bc){
+    bc.innerHTML = '';
+    INSTRUMENTS.forEach(ins => {
+      const b = document.createElement('button'); b.className = 'chip' + (settings.instruments.includes(ins) ? ' active' : ''); b.textContent = ins;
+      b.addEventListener('click', () => {
+        const i = settings.instruments.indexOf(ins);
+        if (i >= 0) settings.instruments.splice(i, 1); else settings.instruments.push(ins);
+        buildChips();
+      });
+      bc.appendChild(b);
+    });
+  }
+}
+/* ---- Merlin Smart Pick UI: show the pick, apply it, or let the user override ---- */
+function currentPick(){
+  return smartPick(settings.genre, settings.mood, ($('lyricsBox') ? $('lyricsBox').value : ''), settings.energy);
+}
+function refreshPick(){
+  const p = currentPick();
+  if ($('pickText')) $('pickText').textContent = p.reason + '.';
+  if ($('guitarStyleOut')) $('guitarStyleOut').textContent = 'Guitar: ' + p.guitarStyle;
+  return p;
+}
+function applyPick(announce){
+  const p = refreshPick();
+  settings.tempo = p.tempo; settings.key = p.key;
+  settings.instruments = p.instruments.slice();
+  settings.vocalStyle = p.vocalStyle; settings.guitarStyle = p.guitarStyle;
+  $('tempo').value = p.tempo; $('tempoOut').textContent = p.tempo + ' BPM';
+  $('keySel').value = p.key; $('vocalStyle').value = p.vocalStyle;
+  buildChips();
+  if (announce) toast('Merlin picked: ' + p.tempo + ' BPM, ' + p.key + ' ✦');
+  return p;
+}
+function applyPickIfAuto(){
+  if ($('pickAuto') && $('pickAuto').checked) applyPick(false);
+  else refreshPick();
+}
+function showCreateTab(name){
+  document.querySelectorAll('.ctab').forEach(b => b.classList.toggle('active', b.dataset.ctab === name));
+  document.querySelectorAll('.ctab-panel').forEach(p => p.classList.toggle('hidden', p.id !== 'ctab-' + name));
+  if (name === 'band') refreshPick();
+  if (name === 'voice') renderVoiceTab();
+}
+function renderVoiceTab(){
+  const el = $('voiceTabStatus'); if (!el) return;
+  el.textContent = voiceProfile
+    ? `Voice ready ✓ — base pitch ${Math.round(voiceProfile.baseHz)} Hz, songs tune to your range.`
+    : 'No voice profile yet — songs use a neutral pitch until you record.';
 }
 function pickStyleTag(genre){
   return { 'Hip-hop': 'punchy', 'R&B': 'smooth', 'Pop': 'anthemic', 'Rock': 'raw', 'Country': 'smooth', 'Afrobeats': 'euphoric', 'EDM': 'euphoric', 'Lo-fi': 'dreamy', 'Gospel': 'anthemic' }[genre] || 'ethereal';
@@ -442,6 +602,15 @@ function wireCreate(){
     $('moreCard').style.display = settings.mode === 'simple' ? 'none' : '';
     toast(settings.mode === 'simple' ? 'Simple Song — just lyrics + style' : 'Advanced Song — all options');
   }));
+  document.querySelectorAll('.ctab').forEach(b => b.addEventListener('click', () => showCreateTab(b.dataset.ctab)));
+  $('btnUsePick').addEventListener('click', () => { applyPick(true); showCreateTab('band'); });
+  $('btnPickManual').addEventListener('click', () => {
+    if ($('pickAuto')) $('pickAuto').checked = false;
+    refreshPick(); toast('Your call — set tempo, key and band yourself');
+  });
+  $('pickAuto').addEventListener('change', e => { if (e.target.checked) applyPick(true); else refreshPick(); });
+  $('btnVoiceTabRecord').addEventListener('click', () => showView('profile'));
+  $('btnVoiceTabProfile').addEventListener('click', () => showView('profile'));
   $('modelPill').addEventListener('click', () => toast('Merlin v1 — Merlin builds your songs in the app'));
   $('btnAudio').addEventListener('click', () => $('audioFile').click());
   $('audioFile').addEventListener('change', async e => {
@@ -509,7 +678,7 @@ function wireCreate(){
   $('tempo').addEventListener('input', e => { settings.tempo = +e.target.value; $('tempoOut').textContent = settings.tempo + ' BPM'; });
   $('energy').addEventListener('input', e => { settings.energy = +e.target.value; $('energyOut').textContent = ['Low', 'Medium', 'High'][settings.energy - 1]; });
   $('varietyRange').addEventListener('input', e => { settings.variety = +e.target.value; $('varietyLabel').textContent = ['Very low', 'Low', 'Normal', 'High', 'Wild'][settings.variety - 1]; });
-  $('mood').addEventListener('change', e => { settings.mood = e.target.value; });
+  $('mood').addEventListener('change', e => { settings.mood = e.target.value; applyPickIfAuto(); });
   $('keySel').addEventListener('change', e => { settings.key = e.target.value; });
   $('duration').addEventListener('change', e => { settings.durationTarget = +e.target.value; });
   $('vocalStyle').addEventListener('change', e => { settings.vocalStyle = e.target.value; });
@@ -546,7 +715,8 @@ async function createSong(){
       title: $('songTitle').value.trim() || titleFromPrompt(prompt),
       genre: settings.genre, mood: $('mood').value, tempo: settings.tempo, key: settings.key,
       durationTarget: settings.durationTarget, energy: settings.energy, vocalStyle: settings.vocalStyle,
-      instruments: settings.instruments, styleDesc: $('stylesBox').value.trim() || describeStyle(settings.genre, $('mood').value),
+      instruments: settings.instruments, smartPick: currentPick(), guitarStyle: settings.guitarStyle || currentPick().guitarStyle,
+      styleDesc: $('stylesBox').value.trim() || describeStyle(settings.genre, $('mood').value),
       variety: settings.variety, instrumental: settings.instrumental, seed,
       audioRefName: audioRef ? audioRef.name : '',
     }, lyrics, voiceProfile);
@@ -819,6 +989,7 @@ function renderVoice(){
   $('voiceStatus').innerHTML = '<b>Voice ready ✓</b><p class="muted">Every song\'s vocal is tuned to your pitch.</p>';
   $('voiceStats').classList.remove('hidden');
   $('voiceRefName').textContent = 'Voice ready · ' + Math.round(voiceProfile.baseHz) + ' Hz';
+  renderVoiceTab();
 }
 function wireVoice(){
   $('btnRecord').addEventListener('click', async () => {
@@ -929,7 +1100,7 @@ function init(){
   $('profileVer').textContent = 'v' + CURRENT_VERSION;
   $('homeVer').textContent = 'AI Song Maker v' + CURRENT_VERSION + ' · Merlin builds your songs — no extra app or key needed.';
   if (audioRef){ $('audioRefName').textContent = audioRef.name; $('btnAudio').classList.add('on'); }
-  buildChips(); wireNav(); wireCreate(); wireLibrary(); wirePlayer(); wireVoice(); wireUpdate();
+  buildChips(); refreshPick(); wireNav(); wireCreate(); wireLibrary(); wirePlayer(); wireVoice(); wireUpdate();
   renderVoice(); renderLibrary(); renderHome(); renderSearch();
   checkUpdate(false);
 }
