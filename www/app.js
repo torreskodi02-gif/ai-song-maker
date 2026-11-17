@@ -8,7 +8,7 @@
    ========================================================================== */
 'use strict';
 /* __PURE_START__ */
-const CURRENT_VERSION = '1.1.0';
+const CURRENT_VERSION = '1.1.1';
 const REPO = 'torreskodi02-gif/ai-song-maker';
 const LATEST_API = 'https://api.github.com/repos/' + REPO + '/releases/latest';
 const APK_URL = 'https://github.com/' + REPO + '/releases/download/latest/ai-song-maker.apk';
@@ -698,6 +698,9 @@ function setProgress(pct, label){
 const sleep = ms => new Promise(r => setTimeout(r, ms));
 async function createSong(){
   const btn = $('btnCreate'); if (btn.disabled) return;
+  /* Warm up audio NOW, inside the tap — Android blocks audio started
+     after the ~2s of lyric/melody work that follows. */
+  warmAudio();
   let lyrics = $('lyricsBox').value.trim();
   const prompt = lyrics || $('stylesBox').value.trim() || $('songTitle').value.trim();
   if (!prompt){ toast('Write lyrics or a prompt first'); $('lyricsBox').focus(); return; }
@@ -896,24 +899,44 @@ function closeSheet(){ $('songSheet').classList.add('hidden'); }
 
 /* ================= PLAYER ================= */
 let audioCtx = null, songGain = null, playState = null, playTimer = null;
+/* One long-lived AudioContext for the whole app. Android's WebView blocks
+   audio that starts without a tap, so the context is created + resumed
+   synchronously inside tap handlers (warmAudio) — never after an async
+   wait, and never closed and recreated between songs. */
 function ensureCtx(){
-  if (!audioCtx) audioCtx = new (window.AudioContext || window.webkitAudioContext)();
-  if (audioCtx.state === 'suspended') audioCtx.resume();
+  if (!audioCtx){
+    try { audioCtx = new (window.AudioContext || window.webkitAudioContext)(); }
+    catch (e){ toast('This phone blocked audio — try closing and reopening the app'); return null; }
+  }
   return audioCtx;
+}
+function warmAudio(){
+  const ctx = ensureCtx();
+  if (ctx && ctx.state === 'suspended'){ try { ctx.resume(); } catch (e){} }
+  return ctx;
 }
 function stopPlayback(){
   if (playTimer){ clearInterval(playTimer); playTimer = null; }
-  if (audioCtx){ try { audioCtx.close(); } catch (e){} audioCtx = null; }
-  playState = null; songGain = null;
+  /* Disconnect the song's gain — the old notes finish silently into nothing.
+     Never close the context: a fresh context made outside a tap starts
+     suspended on Android and the next play does nothing. */
+  if (songGain){ try { songGain.disconnect(); } catch (e){} songGain = null; }
+  playState = null;
   $('btnPlayPause').textContent = '▶';
   document.querySelectorAll('.song-row.playing').forEach(r => r.classList.remove('playing'));
 }
-function playSong(song, fromBeat){
+async function playSong(song, fromBeat){
+  if (!song) return;
   stopPlayback();
-  const ctx = ensureCtx();
+  const ctx = warmAudio();
+  if (!ctx) return;
+  try { await ctx.resume(); } catch (e){}
+  if (ctx.state === 'suspended'){ toast('Audio is blocked — tap Play again'); return; }
   songGain = ctx.createGain(); songGain.gain.value = 0.9; songGain.connect(ctx.destination);
   const t0 = ctx.currentTime + 0.12;
-  const sched = scheduleSong(ctx, songGain, song, { t0, fromBeat: fromBeat || 0 });
+  let sched;
+  try { sched = scheduleSong(ctx, songGain, song, { t0, fromBeat: fromBeat || 0 }); }
+  catch (err){ console.error(err); toast('Could not start playback — try again'); return; }
   song.plays = (song.plays || 0) + 1; saveSongs();
   playState = { song, t0, fromBeat: fromBeat || 0, durationSec: sched.durationSec, lineEvents: sched.lineEvents, paused: false };
   $('playerBar').classList.remove('hidden');
@@ -927,7 +950,7 @@ function updatePlayer(){
   if (!playState || !audioCtx) return;
   const elapsed = audioCtx.currentTime - playState.t0;
   const total = playState.durationSec - playState.fromBeat * playState.song.beat;
-  if (elapsed >= total){ stopPlayback(); $('pLine').textContent = ''; $('pTime').textContent = '0:00 / ' + fmtTime(playState.song.durationSec); return; }
+  if (elapsed >= total){ const totalDur = playState.song.durationSec; stopPlayback(); $('pLine').textContent = ''; $('pTime').textContent = '0:00 / ' + fmtTime(totalDur); return; }
   $('seek').value = Math.round(1000 * clamp(elapsed / total, 0, 1));
   $('pTime').textContent = fmtTime(elapsed) + ' / ' + fmtTime(total);
   const ev = playState.lineEvents.find(e => elapsed >= (e.t - playState.t0) && elapsed < (e.end - playState.t0));
@@ -941,9 +964,10 @@ function updatePlayer(){
   }
 }
 function wirePlayer(){
-  $('btnPlayPause').addEventListener('click', () => {
+  $('btnPlayPause').addEventListener('click', async () => {
     if (!playState){ if (currentSong) playSong(currentSong); return; }
-    if (audioCtx.state === 'suspended'){ audioCtx.resume(); $('btnPlayPause').textContent = '⏸'; }
+    if (!audioCtx){ playSong(playState.song, playState.fromBeat); return; }
+    if (audioCtx.state === 'suspended'){ try { await audioCtx.resume(); } catch (e){} $('btnPlayPause').textContent = '⏸'; }
     else { audioCtx.suspend(); $('btnPlayPause').textContent = '▶'; }
   });
   $('seek').addEventListener('change', e => {
