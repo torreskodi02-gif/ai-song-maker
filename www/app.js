@@ -8,9 +8,13 @@
    ========================================================================== */
 'use strict';
 /* __PURE_START__ */
-const CURRENT_VERSION = '1.2.0';
+const CURRENT_VERSION = '1.2.1';
 const REPO = 'torreskodi02-gif/ai-song-maker';
 const LATEST_API = 'https://api.github.com/repos/' + REPO + '/releases/latest';
+/* Fallback for the update check: the release title is often unversioned
+   ("AI Song Maker (newest build)") because the workflow file was never
+   re-pasted, so www/version.json on main is the reliable version source. */
+const VERSION_JSON_URL = 'https://raw.githubusercontent.com/' + REPO + '/main/www/version.json';
 const APK_URL = 'https://github.com/' + REPO + '/releases/download/latest/ai-song-maker.apk';
 
 const NOTE_NAMES = ['C','C#','D','D#','E','F','F#','G','G#','A','A#','B'];
@@ -789,11 +793,15 @@ async function createSong(){
     setProgress(62, 'Building beat…'); await sleep(380);
     setProgress(86, 'Mixing vocals…'); await sleep(380);
     songs.unshift(song); saveSongs();
-    setProgress(100, 'Done — playing your song'); await sleep(350);
+    setProgress(100, 'Done — tap Play to hear it'); await sleep(350);
     $('progress').classList.add('hidden');
     renderLibrary(); renderHome();
-    openSong(song.id); playSong(song);
-    toast('Your song is ready 🎵');
+    /* Do NOT auto-play here: this runs ~2s after the Create tap, outside
+       the user gesture, so Android's WebView will not let the audio start
+       and Play looks broken. Show the song and let Kodi tap Play himself —
+       that tap IS a gesture, and the watchdog below verifies the engine. */
+    openSong(song.id);
+    toast('Your song is ready 🎵 — tap Play to hear it');
   } catch (err){ console.error(err); toast('Something went wrong — try again'); $('progress').classList.add('hidden'); }
   btn.disabled = false;
 }
@@ -939,6 +947,7 @@ function openSong(id){
       <button class="btn ghost" data-sheet="remix">✦ Remix</button>
       <button class="btn ghost" data-sheet="extend">＋ Extend</button>
     </div>
+    <p class="muted small" id="audioDiag" style="margin-top:10px">Audio: —</p>
     <h3 style="margin-top:18px">Lyrics</h3>
     <div class="detail-lyrics" id="detailLyrics">${(() => {
       let out = '', lastSec = '';
@@ -949,6 +958,7 @@ function openSong(id){
       return out;
     })()}</div>`;
   $('songSheet').classList.remove('hidden');
+  renderAudioDiag();
   $('sheetBody').querySelectorAll('[data-sheet]').forEach(b => b.addEventListener('click', async () => {
     const a = b.dataset.sheet;
     if (a === 'play') playSong(song);
@@ -961,11 +971,16 @@ function openSong(id){
 function closeSheet(){ $('songSheet').classList.add('hidden'); }
 
 /* ================= PLAYER ================= */
-let audioCtx = null, songGain = null, playState = null, playTimer = null;
+let audioCtx = null, songGain = null, playState = null, playTimer = null, playWatchdogTimer = null;
 /* One long-lived AudioContext for the whole app. Android's WebView blocks
    audio that starts without a tap, so the context is created + resumed
    synchronously inside tap handlers (warmAudio) — never after an async
    wait, and never closed and recreated between songs. */
+/* How long after scheduling we check that the clock is really moving.
+   On some Android WebViews a context reports state 'running' yet its
+   currentTime never advances — the notes are scheduled but nothing ever
+   sounds, so Play looks stuck. The watchdog below catches exactly that. */
+const PLAY_WATCHDOG_MS = 1000;
 function ensureCtx(){
   if (!audioCtx){
     try { audioCtx = new (window.AudioContext || window.webkitAudioContext)(); }
@@ -978,8 +993,29 @@ function warmAudio(){
   if (ctx && ctx.state === 'suspended'){ try { ctx.resume(); } catch (e){} }
   return ctx;
 }
+/* One-line audio diagnostic for the song sheet: engine state + clock
+   time, so Kodi can report exactly what the engine is doing when Play
+   fails. Updated on open, on every player tick, and by the watchdog. */
+function audioDiagText(){
+  if (!audioCtx) return 'Audio: no engine yet — tap Play';
+  const st = audioCtx.state;
+  let t = NaN;
+  try { t = audioCtx.currentTime; } catch (e){}
+  const tTxt = isFinite(t) ? t.toFixed(2) + 's' : 'n/a';
+  if (playState){
+    const el = t - playState.t0;
+    return 'Audio: ' + st + ' · time ' + tTxt + ' · ' + (el >= 0 ? fmtTime(el) + ' into song' : 'starting…');
+  }
+  return 'Audio: ' + st + ' · time ' + tTxt;
+}
+function renderAudioDiag(){
+  const el = $('audioDiag');
+  if (el) el.textContent = audioDiagText();
+}
+function clearPlayWatchdog(){ if (playWatchdogTimer){ clearTimeout(playWatchdogTimer); playWatchdogTimer = null; } }
 function stopPlayback(){
   if (playTimer){ clearInterval(playTimer); playTimer = null; }
+  clearPlayWatchdog();
   /* Disconnect the song's gain — the old notes finish silently into nothing.
      Never close the context: a fresh context made outside a tap starts
      suspended on Android and the next play does nothing. */
@@ -988,18 +1024,19 @@ function stopPlayback(){
   $('btnPlayPause').textContent = '▶';
   document.querySelectorAll('.song-row.playing').forEach(r => r.classList.remove('playing'));
 }
-async function playSong(song, fromBeat){
+async function playSong(song, fromBeat, isRetry){
   if (!song) return;
   stopPlayback();
   const ctx = warmAudio();
   if (!ctx) return;
   try { await ctx.resume(); } catch (e){}
-  if (ctx.state === 'suspended'){ toast('Audio is blocked — tap Play again'); return; }
+  if (ctx.state === 'suspended'){ toast('Audio is blocked — tap Play again'); renderAudioDiag(); return; }
   songGain = ctx.createGain(); songGain.gain.value = 0.9; songGain.connect(ctx.destination);
   const t0 = ctx.currentTime + 0.12;
+  const startT = ctx.currentTime;
   let sched;
   try { sched = scheduleSong(ctx, songGain, song, { t0, fromBeat: fromBeat || 0 }); }
-  catch (err){ console.error(err); toast('Could not start playback — try again'); return; }
+  catch (err){ console.error(err); toast('Could not start playback — try again'); renderAudioDiag(); return; }
   song.plays = (song.plays || 0) + 1; saveSongs();
   playState = { song, t0, fromBeat: fromBeat || 0, durationSec: sched.durationSec, lineEvents: sched.lineEvents, paused: false };
   $('playerBar').classList.remove('hidden');
@@ -1008,12 +1045,45 @@ async function playSong(song, fromBeat){
   document.querySelectorAll(`[data-song="${song.id}"]`).forEach(r => r.classList.add('playing'));
   playTimer = setInterval(updatePlayer, 120);
   updatePlayer();
+  renderAudioDiag();
+  /* Watchdog: ~1s after scheduling, check the clock actually moved. A
+     context can claim state 'running' while its currentTime is frozen —
+     on that phone nothing will ever sound. If it is stuck, throw the
+     broken context away, build a fresh one and retry the play once. If
+     the fresh one is frozen too, say so plainly instead of spinning. */
+  playWatchdogTimer = setTimeout(async () => {
+    playWatchdogTimer = null;
+    if (!playState || playState.song !== song || playState.t0 !== t0) return;
+    const cur = audioCtx;
+    let now = NaN;
+    try { now = cur ? cur.currentTime : NaN; } catch (e){}
+    const advancing = cur && isFinite(now) && (now - startT) > 0.02;
+    const stuck = !cur || cur.state === 'suspended' || !advancing;
+    if (!stuck){ renderAudioDiag(); return; }
+    const stateTxt = cur ? cur.state : 'no-context';
+    const timeTxt = isFinite(now) ? now.toFixed(2) + 's' : 'n/a';
+    console.warn('[play-watchdog] frozen AudioContext', stateTxt, timeTxt);
+    if (!isRetry){
+      const old = cur;
+      stopPlayback();
+      if (old){ try { const p = old.close(); if (p && p.catch) p.catch(() => {}); } catch (e){} }
+      audioCtx = null; songGain = null;
+      toast('Audio engine was stuck — retrying with a fresh one…');
+      renderAudioDiag();
+      await playSong(song, fromBeat || 0, true);
+      return;
+    }
+    stopPlayback();
+    audioCtx = null; songGain = null;
+    toast('Audio engine stuck (state: ' + stateTxt + ', time frozen at ' + timeTxt + ') — try closing and reopening the app');
+    renderAudioDiag();
+  }, PLAY_WATCHDOG_MS);
 }
 function updatePlayer(){
   if (!playState || !audioCtx) return;
   const elapsed = audioCtx.currentTime - playState.t0;
   const total = playState.durationSec - playState.fromBeat * playState.song.beat;
-  if (elapsed >= total){ const totalDur = playState.song.durationSec; stopPlayback(); $('pLine').textContent = ''; $('pTime').textContent = '0:00 / ' + fmtTime(totalDur); return; }
+  if (elapsed >= total){ const totalDur = playState.song.durationSec; stopPlayback(); $('pLine').textContent = ''; $('pTime').textContent = '0:00 / ' + fmtTime(totalDur); renderAudioDiag(); return; }
   $('seek').value = Math.round(1000 * clamp(elapsed / total, 0, 1));
   $('pTime').textContent = fmtTime(elapsed) + ' / ' + fmtTime(total);
   const ev = playState.lineEvents.find(e => elapsed >= (e.t - playState.t0) && elapsed < (e.end - playState.t0));
@@ -1025,6 +1095,7 @@ function updatePlayer(){
     const span = document.querySelector(`#detailLyrics [data-line="${idx}"]`);
     if (span) span.classList.add('cur');
   }
+  renderAudioDiag();
 }
 function wirePlayer(){
   $('btnPlayPause').addEventListener('click', async () => {
@@ -1147,9 +1218,19 @@ async function checkUpdate(announce){
     const res = await fetch(LATEST_API, { headers: { Accept: 'application/vnd.github+json' }, signal: ctrl.signal });
     if (!res.ok) throw new Error('HTTP ' + res.status);
     const d = await res.json();
-    /* The release tag is literally "latest" — the version lives in the
-       release title ("AI Song Maker v1.1.2"), so read it from there first. */
-    const latest = extractVersion(d.name) || extractVersion(d.tag_name) || '';
+    /* The release tag is literally "latest" and the title is often
+       unversioned ("AI Song Maker (newest build)") because the workflow
+       file was never re-pasted — so read the version from the title
+       first, then the tag, then fall back to www/version.json on main,
+       which every push updates. That way a new version is detected even
+       when the release title carries no version at all. */
+    let latest = extractVersion(d.name) || extractVersion(d.tag_name) || '';
+    if (!latest){
+      try {
+        const vr = await fetch(VERSION_JSON_URL + '?t=' + Date.now(), { signal: ctrl.signal });
+        if (vr.ok){ const vj = await vr.json(); latest = extractVersion(vj.version) || ''; }
+      } catch (e){}
+    }
     if (!latest) return;
     const inst = await installedVersion();
     if (cmpVer(latest, inst) > 0){
@@ -1188,6 +1269,7 @@ function init(){
   const greet = hour < 12 ? 'Good morning' : hour < 18 ? 'Good afternoon' : 'Good evening';
   document.querySelector('#view-home h1').textContent = greet + ', Kodi';
   $('profileVer').textContent = 'v' + CURRENT_VERSION;
+  $('libVer').textContent = 'v' + CURRENT_VERSION;
   $('homeVer').textContent = 'AI Song Maker v' + CURRENT_VERSION + ' · Merlin builds your songs — no extra app or key needed.';
   if (audioRef){ $('audioRefName').textContent = audioRef.name; $('btnAudio').classList.add('on'); }
   buildChips(); refreshPick(); wireNav(); wireCreate(); wireLibrary(); wirePlayer(); wireVoice(); wireUpdate();
