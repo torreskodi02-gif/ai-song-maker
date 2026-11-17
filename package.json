@@ -1,0 +1,19 @@
+{
+  "dependencies": {
+    "@capacitor/android": "^6.1.0",
+    "@capacitor/app": "^6.0.0",
+    "@capacitor/browser": "^6.0.0",
+    "@capacitor/core": "^6.1.0"
+  },
+  "description": "AI Song Maker \u2014 Merlin builds original songs in the background from your voice, lyrics and style. No external music API.",
+  "devDependencies": {
+    "@capacitor/cli": "^6.1.0"
+  },
+  "name": "ai-song-maker",
+  "private": true,
+  "scripts": {
+    "setup-android": "bash setup-android.sh",
+    "sync": "npx cap sync android"
+  },
+  "version": "1.0.0"
+}

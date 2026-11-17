@@ -1,0 +1,252 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<meta name="theme-color" content="#000000">
+<title>AI Song Maker — Merlin builds your songs</title>
+<link rel="stylesheet" href="style.css">
+</head>
+<body>
+<div class="app">
+
+  <div id="updateBanner" class="update-banner hidden" role="status">
+    <div>🎵 <b>New app version <span id="updVer"></span> is ready</b>
+      <small>Download the newest APK and install it. Your songs and voice stay put.</small></div>
+    <div class="spacer"></div>
+    <button class="btn gold small" id="btnUpdate">Update app</button>
+    <button class="btn ghost small" id="btnUpdLater">Later</button>
+  </div>
+
+  <!-- ============ HOME ============ -->
+  <section class="view" id="view-home">
+    <div class="home-hero">
+      <h1>Good evening, Kodi</h1>
+      <p class="muted">Merlin is ready to build your next song.</p>
+    </div>
+    <h2 class="sec-head">Pick a vibe</h2>
+    <div class="genre-grid" id="genreGrid"></div>
+    <h2 class="sec-head">Song starters</h2>
+    <div id="starterGrid"></div>
+    <h2 class="sec-head">Recently made</h2>
+    <div id="recentList"></div>
+    <p class="muted small" style="margin-top:18px" id="homeVer">AI Song Maker v1.0.0 · Merlin builds your songs — no extra app or key needed.</p>
+  </section>
+
+  <!-- ============ SEARCH ============ -->
+  <section class="view" id="view-search">
+    <input type="search" class="search-big" id="searchInput" placeholder="Search your songs…" aria-label="Search songs">
+    <div id="searchResults"></div>
+  </section>
+
+  <!-- ============ CREATE — Advanced Song (screenshot layout) ============ -->
+  <section class="view active" id="view-create">
+    <div class="create-head">
+      <span style="width:92px"></span>
+      <button class="mode-btn" id="modeBtn" aria-haspopup="true">Advanced Song <span class="chev">▾</span></button>
+      <button class="model-pill" id="modelPill">Merlin v1 <span class="chev">▾</span></button>
+    </div>
+    <div id="modeMenu" class="mode-menu hidden">
+      <button data-mode="advanced">Advanced Song</button>
+      <button data-mode="simple">Simple Song</button>
+    </div>
+
+    <div class="av-row">
+      <button class="av-pill" id="btnAudio">＋ Audio<small id="audioRefName">Add a reference track</small></button>
+      <button class="av-pill" id="btnVoice">＋ Voice<small id="voiceRefName">Use your voice</small></button>
+    </div>
+    <input type="file" id="audioFile" accept="audio/*" class="hidden">
+
+    <div class="sheet-card" id="lyricsCard">
+      <button class="sheet-head" data-collapse="lyricsCard"><span class="chev">⌄</span> Lyrics</button>
+      <div class="sheet-body">
+        <textarea id="lyricsBox" placeholder="Write lyrics or a prompt" aria-label="Lyrics or prompt"></textarea>
+        <div class="toolbar">
+          <button class="tool-circle" id="btnLyricsLibrary" title="Lyric ideas" aria-label="Lyric ideas">|||/</button>
+          <button class="tool-circle wand" id="btnLyricsWand" title="Merlin, write lyrics" aria-label="Merlin, write lyrics">🪄</button>
+          <button class="tool-pill off" id="btnInstrumental" aria-pressed="false"><span class="chk">✓</span> Instrumental</button>
+          <span class="tool-spacer"></span>
+          <button class="tool-circle" id="btnLyricsExpand" title="Expand" aria-label="Expand lyrics">⛶</button>
+        </div>
+      </div>
+    </div>
+
+    <div class="sheet-card" id="stylesCard">
+      <button class="sheet-head" data-collapse="stylesCard"><span class="chev">⌄</span> Styles</button>
+      <div class="sheet-body">
+        <textarea id="stylesBox" placeholder="Describe what you want your song to sound like" aria-label="Style description" style="min-height:56px"></textarea>
+        <div class="field" style="margin-top:10px"><label>Genre</label><div class="chips" id="genreChips"></div></div>
+        <div class="field"><label for="mood">Mood</label>
+          <select id="mood">
+            <option>Happy</option><option>Chill</option><option>Romantic</option>
+            <option>Sad</option><option>Hype</option><option>Motivational</option>
+            <option>Confident</option><option>Peaceful</option>
+          </select>
+        </div>
+        <div class="toolbar">
+          <button class="tool-circle" id="btnStylesLibrary" title="Style presets" aria-label="Style presets">|||/</button>
+          <button class="tool-circle wand" id="btnStylesWand" title="Merlin, suggest a style" aria-label="Merlin, suggest a style">🪄</button>
+          <button class="tool-circle" id="btnStylesRefresh" title="Surprise style" aria-label="Surprise style">↻</button>
+          <button class="tag-pill" id="styleTag">ethereal</button>
+          <span class="tool-spacer"></span>
+          <button class="tool-circle" id="btnStylesExpand" title="Expand" aria-label="Expand styles">⛶</button>
+        </div>
+      </div>
+    </div>
+
+    <div class="sheet-card" id="moreCard">
+      <button class="sheet-head" data-collapse="moreCard"><span class="chev">⌄</span> More Options</button>
+      <div class="sheet-body">
+        <div class="variety-row">
+          <span class="lbl">Variety <span class="info" title="How different each take sounds">i</span></span>
+          <input type="range" id="varietyRange" min="1" max="5" value="3" aria-label="Variety">
+          <span class="val" id="varietyLabel">Normal</span>
+        </div>
+        <div class="field" style="margin-top:14px"><label>Tempo — <span id="tempoOut" style="color:#fff;text-transform:none;letter-spacing:0">100 BPM</span></label>
+          <input type="range" id="tempo" min="60" max="180" value="100">
+          <div class="range-row"><span>60 slow</span><span>180 fast</span></div>
+        </div>
+        <div class="field"><label for="keySel">Key</label>
+          <select id="keySel">
+            <option>C major</option><option>G major</option><option>D major</option>
+            <option>A major</option><option>F major</option><option>Bb major</option>
+            <option selected>A minor</option><option>E minor</option><option>D minor</option><option>B minor</option>
+          </select>
+        </div>
+        <div class="field"><label for="duration">Length</label>
+          <select id="duration">
+            <option value="45">Short · ~0:45</option>
+            <option value="80" selected>Standard · ~1:20</option>
+            <option value="120">Long · ~2:00</option>
+            <option value="150">Full · ~2:30</option>
+          </select>
+        </div>
+        <div class="field"><label for="energy">Energy — <span id="energyOut" style="color:#fff;text-transform:none;letter-spacing:0">Medium</span></label>
+          <input type="range" id="energy" min="1" max="3" value="2">
+        </div>
+        <div class="field"><label for="vocalStyle">Vocal style</label>
+          <select id="vocalStyle">
+            <option>Smooth</option><option>Raspy</option><option>Autotune</option>
+            <option>Soft / airy</option><option>Powerful</option>
+          </select>
+        </div>
+        <div class="field"><label>Instruments</label><div class="chips" id="instChips"></div></div>
+      </div>
+    </div>
+
+    <div class="title-pill">
+      <span class="note">♪</span>
+      <input type="text" id="songTitle" placeholder="Song Title" maxlength="80" aria-label="Song title">
+    </div>
+
+    <div id="lyricsPreviewWrap" class="hidden">
+      <div class="lyrics-preview" id="lyricsPreview"></div>
+    </div>
+    <div id="progress" class="progress hidden">
+      <b id="progressLabel">Merlin is writing lyrics…</b>
+      <div class="bar"><i id="progressBar"></i></div>
+    </div>
+
+    <div class="create-wrap">
+      <button class="btn-create" id="btnCreate">♪✦&nbsp; Create</button>
+    </div>
+    <p class="muted small" style="text-align:center;margin-top:12px" id="createHint">Merlin writes original lyrics &amp; music every time — made fresh for you.</p>
+  </section>
+
+  <!-- ============ LIBRARY ============ -->
+  <section class="view" id="view-library">
+    <div class="lib-head">
+      <h1>Library</h1>
+      <button class="search-circle" id="btnLibSearch" aria-label="Search">
+        <svg viewBox="0 0 24 24" fill="none" stroke="#fff" stroke-width="2.4" stroke-linecap="round"><circle cx="11" cy="11" r="7"/><line x1="16.5" y1="16.5" x2="21" y2="21"/></svg>
+      </button>
+    </div>
+    <div class="cat-row">
+      <button class="cat-card cat-liked" id="catLiked"><span class="cat-ic">👍</span><b>Liked</b><small id="likedCount">0 songs</small></button>
+      <button class="cat-card cat-playlists" id="catPlaylists"><span class="cat-ic">💿</span><b>Playlists</b><small id="plCount">0 songs</small></button>
+      <button class="cat-card cat-albums" id="catAlbums"><span class="cat-ic">🎵</span><b>Albums</b><small id="albCount">0 songs</small></button>
+    </div>
+    <div class="my-songs-head">
+      <h2>My Songs</h2>
+      <button class="filter-btn" id="filterBtn"><span id="filterLabel">Filter</span> ⏷</button>
+    </div>
+    <div id="libraryList"></div>
+    <div id="libraryEmpty" class="empty-card">
+      <b>No songs yet.</b>
+      <p class="muted">Go to Create, give Merlin an idea, and hit Create. Your first song takes about 20 seconds.</p>
+      <button class="btn" id="btnGoCreate">Create your first song</button>
+    </div>
+  </section>
+
+  <!-- ============ PROFILE / MY VOICE ============ -->
+  <section class="view" id="view-profile">
+    <div class="profile-head">
+      <div class="avatar-big">K</div>
+      <div><h1 style="font-size:24px">Kodi</h1><p class="muted" style="margin:0">AI Song Maker · <span id="profileVer">v1.0.0</span></p></div>
+    </div>
+    <div class="sheet-card">
+      <div class="voice-box">
+        <h2 style="margin-bottom:6px">My Voice</h2>
+        <p class="muted">Record yourself singing or talking for 15–60 seconds. Merlin measures your pitch and tunes every song's vocal to your range.</p>
+        <div class="voice-ring" id="voiceRing">🎙</div>
+        <div id="voiceStatus"><b>No voice profile yet</b><p class="muted">Songs will use a neutral pitch until you record.</p></div>
+        <div id="voiceStats" class="hidden">
+          <div class="pitch-big" id="pitchBig">— Hz</div>
+          <div class="muted" id="pitchNote"></div>
+          <div class="muted small" id="pitchRange"></div>
+        </div>
+        <div class="btn-row" style="justify-content:center">
+          <button class="btn" id="btnRecord">● Record my voice</button>
+          <button class="btn ghost hidden" id="btnStopRec">■ Stop</button>
+          <button class="btn ghost hidden" id="btnPlayRec">▶ Listen back</button>
+        </div>
+        <div class="honest-note">🎵 Honest note: the vocal in your songs is a <b>synthesized vocal tuned to your range</b> — not a studio voice clone. It sings in your pitch, but it won't sound exactly like a recording of you. A true clone of your voice would need a paid voice service plugged in later.</div>
+        <p class="muted small" style="margin-top:10px">Your recording never leaves your phone. Only your voice — never anyone else's — is used for your songs.</p>
+      </div>
+    </div>
+    <div class="sheet-card">
+      <h2 style="margin-bottom:6px">App updates</h2>
+      <p class="muted" id="updStatus">Checking for updates…</p>
+      <div class="btn-row"><button class="btn ghost" id="btnCheckUpd">Check for updates now</button></div>
+      <p class="muted small" style="margin-top:10px">When a new version is ready, the app shows a banner with an Update button that opens the newest APK in your browser. Android never allows silent installs — you tap Install once.</p>
+    </div>
+  </section>
+</div>
+
+<!-- bottom nav: Home / Search / Create / Library / Profile -->
+<nav class="bottomnav" aria-label="Main navigation">
+  <div class="bottomnav-in">
+    <button class="nav-item" data-nav="home" aria-label="Home"><span class="pill"><svg viewBox="0 0 24 24" fill="currentColor"><path d="M12 3l9 8h-3v9h-5v-6h-2v6H6v-9H3l9-8z"/></svg></span></button>
+    <button class="nav-item" data-nav="search" aria-label="Search"><span class="pill"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round"><circle cx="11" cy="11" r="7"/><line x1="16.5" y1="16.5" x2="21" y2="21"/></svg></span></button>
+    <button class="nav-item active" data-nav="create" aria-label="Create"><span class="pill"><svg viewBox="0 0 24 24" fill="currentColor"><path d="M9 18.5A2.5 2.5 0 1 1 6.5 16c.35 0 .68.07 1 .2V6l10-2v11.5a2.5 2.5 0 1 1-1.5-2.3V8.1L9 9.7v8.8z"/><path d="M19 2l.9 2.3L22 5.2l-2.1.9L19 8.4l-.9-2.3L16 5.2l2.1-.9L19 2z"/></svg></span></button>
+    <button class="nav-item" data-nav="library" aria-label="Library"><span class="pill"><svg viewBox="0 0 24 24" fill="currentColor"><rect x="4" y="4" width="3.4" height="16" rx="1.2"/><rect x="10.3" y="4" width="3.4" height="16" rx="1.2"/><rect x="16.6" y="4" width="3.4" height="12" rx="1.2"/><path d="M20.5 15.5l-2 6" stroke="currentColor" stroke-width="2" stroke-linecap="round"/></svg></span></button>
+    <button class="nav-item" data-nav="profile" aria-label="Profile"><span class="pill"><span class="profile-dot">K</span></span></button>
+  </div>
+</nav>
+
+<!-- mini player (only while a song is loaded/playing) -->
+<div class="player hidden" id="playerBar">
+  <div class="player-in">
+    <button class="p-btn" id="btnPlayPause" aria-label="Play or pause">▶</button>
+    <div style="min-width:0;flex:0 1 auto">
+      <div class="p-title" id="pTitle">No song playing</div>
+      <div class="p-line" id="pLine"></div>
+    </div>
+    <div class="seek"><input type="range" id="seek" min="0" max="1000" value="0" aria-label="Seek"></div>
+    <span class="p-time" id="pTime">0:00 / 0:00</span>
+  </div>
+</div>
+
+<!-- song detail sheet -->
+<div id="songSheet" class="sheet hidden">
+  <div class="sheet-in">
+    <div class="grab"></div>
+    <div id="sheetBody"></div>
+    <div class="btn-row"><button class="btn ghost" id="sheetClose">Close</button></div>
+  </div>
+</div>
+
+<div id="toast" class="toast hidden"></div>
+<script src="app.js"></script>
+</body>
+</html>

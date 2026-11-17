@@ -1,0 +1,222 @@
+/* ============================================================================
+   AI SONG MAKER — style.css
+   ============================================================================
+   ★ UI TOKENS — ALL COLOURS / SPACING / RADII LIVE HERE ★
+   ----------------------------------------------------------------------------
+   Matched to Kodi's 4 Suno screenshots (2026-11-17, ~/workspace/user/files/
+   Screenshot_20261117-0532*.png). To tweak the look later, change ONLY the
+   variables in :root below. Layout rules underneath read these tokens, so a
+   restyle stays a small edit and must not touch www/app.js (class names
+   and ids are a contract with app.js — do not rename them).
+   ----------------------------------------------------------------------------
+   Screenshot notes:
+   - Background pure black, cards very dark grey, no borders, big radii.
+   - Bottom nav: 5 items, active tab gets a dark-grey pill behind its icon,
+     Profile is a yellow/orange gradient circle.
+   - Create button: orange (#ff6a00) to pink (#ff2e7e) gradient pill.
+   - Library rows: 64px rounded cover, black translucent duration badge,
+     title white bold, version tag small red/pink, subtitle grey + ellipsis.
+   ========================================================================== */
+:root{
+  --bg:#000000;            /* page background — pure black (screenshot) */
+  --card:#121212;          /* card background */
+  --card-2:#1a1a1a;        /* slightly lighter card / input */
+  --pill:#1f1f1f;          /* dark pills (+Audio / +Voice, chips) */
+  --pill-2:#2a2a2a;        /* pill hover / active nav pill */
+  --text:#ffffff;          /* primary text */
+  --muted:#9b9b9b;         /* grey secondary text / placeholders */
+  --muted-2:#6f6f6f;       /* dimmer grey */
+  --ver:#ff9a3d;           /* version tag — OUR accent orange (song rows show "M1") */
+  --create-1:#ff6a00;      /* Create gradient start (orange) */
+  --create-2:#ff2e7e;      /* Create gradient end (pink) */
+  --pink:#ff4da6;          /* Variety slider thumb (pink) */
+  --gold-1:#ffd34d;        /* Profile gradient start (yellow) */
+  --gold-2:#ff8a00;        /* Profile gradient end (orange) */
+  --liked-1:#22c55e;       /* Liked card gradient */
+  --liked-2:#2563eb;
+  --pl-1:#a855f7;          /* Playlists card gradient */
+  --pl-2:#ec4899;
+  --alb-1:#facc15;         /* Albums card gradient */
+  --alb-2:#f97316;
+  --green:#3fb950;
+  --radius:24px;           /* card corner radius (screenshot ~24px) */
+  --radius-sm:16px;
+  --radius-pill:20px;      /* +Audio / +Voice pills */
+  --gap:14px;
+  --pad:20px;
+  --nav-h:64px;            /* bottom nav height */
+  --max-w:600px;           /* phone column width (centred on desktop) */
+  --font:system-ui,-apple-system,"Segoe UI",Roboto,Helvetica,Arial,sans-serif;
+}
+*{box-sizing:border-box}
+html,body{margin:0;padding:0}
+body{background:var(--bg);color:var(--text);font-family:var(--font);font-size:15px;line-height:1.45;-webkit-tap-highlight-color:transparent}
+button{font-family:inherit;cursor:pointer;color:var(--text)}
+input,select,textarea{font-family:inherit;font-size:15px;color:var(--text)}
+h1,h2,h3{margin:0}
+p{margin:0 0 10px}
+.muted{color:var(--muted)}
+.small{font-size:12.5px}
+.hidden{display:none!important}
+::-webkit-scrollbar{width:0;height:0}
+
+/* ---------- app column (phone-first, centred on desktop) ---------- */
+.app{max-width:var(--max-w);margin:0 auto;min-height:100vh;padding:0 16px calc(var(--nav-h) + 96px)}
+.view{display:none}
+.view.active{display:block}
+
+/* ---------- update banner (only shows when a newer APK exists) ---------- */
+.update-banner{display:flex;align-items:center;gap:12px;background:#2a1a12;border-radius:var(--radius-sm);padding:13px 15px;margin:12px 0}
+.update-banner b{font-size:14.5px}
+.update-banner small{display:block;color:var(--muted);margin-top:2px}
+.update-banner .spacer{flex:1}
+
+/* ---------- buttons ---------- */
+.btn{border:0;border-radius:999px;padding:12px 20px;font-size:15px;font-weight:700;background:#2a2a2a;color:var(--text)}
+.btn:disabled{opacity:.55;cursor:wait}
+.btn.gold{background:var(--gold-2);color:#111}
+.btn.small{padding:9px 15px;font-size:13.5px}
+.btn.ghost{background:var(--pill);color:var(--text)}
+.btn-row{display:flex;gap:9px;flex-wrap:wrap;margin-top:12px}
+.icon-btn{background:var(--pill);border:0;color:var(--text);border-radius:10px;padding:7px 10px;font-size:12.5px;font-weight:700}
+.icon-btn.fav-on{color:var(--ver)}
+
+/* ---------- bottom nav — 5 items, active gets dark-grey pill ---------- */
+.bottomnav{position:fixed;left:0;right:0;bottom:0;z-index:60;background:var(--bg);padding:8px 6px calc(8px + env(safe-area-inset-bottom))}
+.bottomnav-in{max-width:var(--max-w);margin:0 auto;display:flex}
+.nav-item{flex:1;background:none;border:0;color:#8a8a8a;display:flex;align-items:center;justify-content:center;padding:4px 0}
+.nav-item .pill{display:flex;align-items:center;justify-content:center;min-width:58px;height:44px;border-radius:999px;padding:0 14px}
+.nav-item.active{color:var(--text)}
+.nav-item.active .pill{background:var(--pill-2)}
+.nav-item svg{width:26px;height:26px;display:block}
+.nav-item .profile-dot{width:30px;height:30px;border-radius:50%;background:linear-gradient(135deg,var(--gold-1),var(--gold-2));display:flex;align-items:center;justify-content:center;color:#111;font-weight:800;font-size:15px}
+
+/* ---------- Library screen ---------- */
+.lib-head{display:flex;align-items:center;justify-content:space-between;padding:26px 2px 18px}
+.lib-head h1{font-size:36px;font-weight:800;letter-spacing:-.5px}
+.search-circle{width:48px;height:48px;border-radius:50%;border:0;background:var(--card-2);display:flex;align-items:center;justify-content:center;flex:0 0 auto}
+.search-circle svg{width:22px;height:22px}
+.cat-row{display:flex;gap:12px;overflow-x:auto;padding:2px 2px 6px;scrollbar-width:none}
+.cat-card{flex:0 0 168px;height:132px;border:0;border-radius:var(--radius-sm);text-align:left;padding:14px;display:flex;flex-direction:column;justify-content:flex-end;color:#fff;position:relative;overflow:hidden}
+.cat-card b{font-size:19px;font-weight:700;position:relative;z-index:1}
+.cat-card small{font-size:12px;opacity:.9;position:relative;z-index:1}
+.cat-card .cat-ic{position:absolute;top:12px;right:12px;font-size:44px;opacity:.9}
+.cat-liked{background:linear-gradient(135deg,var(--liked-1),var(--liked-2))}
+.cat-playlists{background:linear-gradient(135deg,var(--pl-1),var(--pl-2))}
+.cat-albums{background:linear-gradient(135deg,var(--alb-1),var(--alb-2))}
+.my-songs-head{display:flex;align-items:center;justify-content:space-between;margin:20px 2px 10px}
+.my-songs-head h2{font-size:21px;font-weight:700}
+.filter-btn{background:none;border:0;color:var(--text);font-size:15px;font-weight:600;display:flex;align-items:center;gap:6px}
+.song-row{display:flex;align-items:center;gap:13px;width:100%;background:none;border:0;text-align:left;padding:9px 2px;color:var(--text)}
+.song-row .cover{width:64px;height:64px;flex:0 0 64px;border-radius:14px;position:relative;overflow:hidden;display:flex;align-items:center;justify-content:center;font-size:26px;font-weight:800;color:#fff}
+.song-row .dur{position:absolute;left:50%;bottom:5px;transform:translateX(-50%);background:rgba(0,0,0,.72);border-radius:999px;padding:2px 8px;font-size:11.5px;font-weight:700;white-space:nowrap}
+.song-row .info{flex:1;min-width:0}
+.song-row .title{font-size:16px;font-weight:700;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.song-row .title .ver{color:var(--ver);font-size:12.5px;font-weight:700;margin-left:6px}
+.song-row .sub{font-size:13.5px;color:var(--muted);white-space:nowrap;overflow:hidden;text-overflow:ellipsis;margin-top:2px}
+.song-row .dots{flex:0 0 auto;background:none;border:0;color:#cfcfcf;font-size:21px;letter-spacing:2px;padding:8px 4px}
+.song-row.playing .title{color:var(--gold-1)}
+.empty-card{background:var(--card);border-radius:var(--radius);padding:var(--pad);margin-top:12px}
+
+/* ---------- Create screen (Advanced Song) ---------- */
+.create-head{display:flex;align-items:center;justify-content:space-between;padding:22px 2px 14px}
+.create-head .mode-btn{background:none;border:0;font-size:21px;font-weight:700;color:var(--text);display:flex;align-items:center;gap:6px;margin:0 auto}
+.create-head .mode-btn .chev{font-size:13px;color:var(--muted)}
+.model-pill{background:var(--card);border:1px solid #2e2e2e;border-radius:999px;padding:9px 14px;font-size:14.5px;font-weight:600;color:var(--text);display:flex;align-items:center;gap:5px;white-space:nowrap}
+.model-pill .chev{font-size:11px;color:var(--muted)}
+.mode-menu{position:absolute;right:16px;top:64px;background:var(--card-2);border-radius:var(--radius-sm);padding:6px;z-index:40;box-shadow:0 12px 40px rgba(0,0,0,.7)}
+.mode-menu button{display:block;width:100%;background:none;border:0;text-align:left;padding:11px 14px;font-size:15px;border-radius:10px}
+.mode-menu button:hover{background:var(--pill)}
+.av-row{display:grid;grid-template-columns:1fr 1fr;gap:12px;margin-bottom:14px}
+.av-pill{background:var(--pill);border:0;border-radius:var(--radius-pill);padding:17px 10px;font-size:17px;font-weight:600;color:var(--text)}
+.av-pill.on{outline:2px solid var(--gold-1)}
+.av-pill small{display:block;font-size:11.5px;color:var(--muted);font-weight:500;margin-top:3px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.sheet-card{background:var(--card);border-radius:var(--radius);padding:18px var(--pad) 14px;margin-bottom:14px}
+.sheet-head{display:flex;align-items:center;gap:10px;background:none;border:0;padding:0;width:100%;text-align:left;font-size:17px;font-weight:600;color:var(--text)}
+.sheet-head .chev{color:var(--muted);font-size:13px;transition:transform .2s}
+.sheet-card.closed .sheet-head .chev{transform:rotate(-90deg)}
+.sheet-body{margin-top:12px}
+.sheet-card.closed .sheet-body{display:none}
+.sheet-card textarea{width:100%;background:none;border:0;outline:none;resize:none;min-height:74px;font-size:16.5px;line-height:1.55;color:var(--text)}
+.sheet-card textarea::placeholder{color:var(--muted-2)}
+.toolbar{display:flex;align-items:center;gap:12px;margin-top:8px}
+.tool-circle{width:48px;height:48px;border-radius:50%;border:0;background:var(--pill);display:flex;align-items:center;justify-content:center;font-size:20px;flex:0 0 auto}
+.tool-circle.wand{background:#fff;color:#111;font-size:22px}
+.tool-pill{display:flex;align-items:center;gap:8px;background:none;border:1px solid #3a3a3a;border-radius:999px;padding:10px 16px;font-size:15px;color:var(--text)}
+.tool-pill .chk{width:22px;height:22px;border-radius:50%;background:#fff;color:#111;display:inline-flex;align-items:center;justify-content:center;font-size:13px;font-weight:800}
+.tool-pill.off .chk{background:var(--pill-2);color:var(--muted)}
+.tool-pill.off{color:var(--muted)}
+.tool-spacer{flex:1}
+.tag-pill{background:var(--pill);border:0;border-radius:999px;padding:11px 18px;font-size:15px;color:var(--text)}
+.title-pill{display:flex;align-items:center;gap:12px;background:var(--card);border-radius:var(--radius);padding:16px 18px;margin-bottom:14px}
+.title-pill .note{font-size:22px}
+.title-pill input{flex:1;background:none;border:0;outline:none;font-size:16.5px}
+.title-pill input::placeholder{color:var(--muted-2)}
+.create-wrap{position:sticky;bottom:calc(var(--nav-h) + 12px);z-index:30}
+.btn-create{width:100%;border:0;border-radius:999px;padding:19px;font-size:20px;font-weight:700;color:#fff;background:linear-gradient(100deg,var(--create-1),var(--create-2) 55%,#ff5a3c);box-shadow:0 8px 28px rgba(255,46,126,.35)}
+.btn-create:disabled{opacity:.6;cursor:wait}
+.progress{margin:12px 2px 0;background:var(--card);border-radius:var(--radius-sm);padding:13px 15px}
+.progress .bar{height:7px;background:var(--pill);border-radius:99px;overflow:hidden;margin-top:9px}
+.progress .bar i{display:block;height:100%;background:linear-gradient(90deg,var(--create-1),var(--create-2));width:0%;transition:width .35s}
+.lyrics-preview{white-space:pre-wrap;background:var(--card);border-radius:var(--radius-sm);padding:15px;line-height:1.65;max-height:280px;overflow:auto;margin-top:12px}
+.lyrics-preview .sec{color:var(--gold-1);font-weight:700;font-size:12px;letter-spacing:.5px}
+.field{margin-bottom:13px}
+.field label{display:block;font-size:12.5px;font-weight:700;color:var(--muted);margin-bottom:6px;text-transform:uppercase;letter-spacing:.4px}
+.field select,.field input[type=text]{width:100%;background:var(--pill);border:0;border-radius:12px;padding:11px 12px;outline:none}
+.chips{display:flex;gap:8px;overflow-x:auto;padding-bottom:4px;scrollbar-width:none}
+.chip{flex:0 0 auto;background:var(--pill);border:0;color:var(--text);border-radius:999px;padding:9px 15px;font-size:13.5px;font-weight:600;white-space:nowrap}
+.chip.active{background:#fff;color:#111}
+input[type=range]{width:100%;accent-color:var(--pink)}
+.range-row{display:flex;justify-content:space-between;font-size:13px;color:var(--muted)}
+.variety-row{display:flex;align-items:center;gap:14px;padding:6px 0}
+.variety-row .lbl{font-size:16px;display:flex;align-items:center;gap:7px;white-space:nowrap}
+.variety-row .lbl .info{width:19px;height:19px;border-radius:50%;background:var(--pill-2);color:var(--muted);display:inline-flex;align-items:center;justify-content:center;font-size:11px}
+.variety-row input{flex:1}
+.variety-row .val{font-size:16px;white-space:nowrap}
+
+/* ---------- Home / Search / Profile ---------- */
+.home-hero{padding:26px 2px 8px}
+.home-hero h1{font-size:32px;font-weight:800;letter-spacing:-.5px}
+.genre-grid{display:grid;grid-template-columns:1fr 1fr;gap:12px;margin:14px 0}
+.genre-tile{border:0;border-radius:var(--radius-sm);padding:18px;text-align:left;color:#fff;font-weight:800;font-size:17px;min-height:96px;display:flex;flex-direction:column;justify-content:flex-end}
+.genre-tile small{font-weight:500;font-size:12.5px;opacity:.9}
+.sec-head{font-size:21px;font-weight:700;margin:22px 2px 10px}
+.search-big{width:100%;background:var(--card);border:0;border-radius:999px;padding:15px 19px;font-size:16px;outline:none;margin:22px 0 6px}
+.search-big::placeholder{color:var(--muted-2)}
+.profile-head{display:flex;align-items:center;gap:14px;padding:26px 2px 10px}
+.profile-head .avatar-big{width:64px;height:64px;border-radius:50%;background:linear-gradient(135deg,var(--gold-1),var(--gold-2));display:flex;align-items:center;justify-content:center;font-size:28px;font-weight:800;color:#111}
+.voice-box{text-align:center;padding:10px 0}
+.voice-ring{width:104px;height:104px;border-radius:50%;background:var(--pill);border:3px solid var(--gold-2);display:flex;align-items:center;justify-content:center;font-size:40px;margin:8px auto 14px}
+.voice-ring.rec{border-color:var(--ver);animation:pulse 1.1s infinite}
+@keyframes pulse{0%{box-shadow:0 0 0 0 rgba(255,77,109,.45)}70%{box-shadow:0 0 0 16px rgba(255,77,109,0)}100%{box-shadow:0 0 0 0 rgba(255,77,109,0)}}
+.pitch-big{font-size:30px;font-weight:800}
+.honest-note{background:#17130a;border-radius:var(--radius-sm);padding:12px 14px;font-size:13px;color:#e8d9a8;margin-top:14px;text-align:left}
+.honest-note b{color:#fff}
+
+/* ---------- mini player (appears only while playing, above nav) ---------- */
+.player{position:fixed;left:0;right:0;bottom:var(--nav-h);z-index:55;background:rgba(18,18,18,.97);border-top:1px solid #222}
+.player-in{max-width:var(--max-w);margin:0 auto;padding:9px 16px 11px;display:flex;align-items:center;gap:12px}
+.p-btn{width:42px;height:42px;border-radius:50%;border:0;background:#fff;color:#111;font-size:16px;flex:0 0 auto}
+.player .p-title{font-weight:700;font-size:14px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;max-width:180px}
+.player .p-line{font-size:12px;color:var(--gold-1);white-space:nowrap;overflow:hidden;text-overflow:ellipsis;max-width:220px}
+.seek{flex:1;min-width:50px}
+.seek input{width:100%}
+.p-time{font-size:11.5px;color:var(--muted);white-space:nowrap}
+
+/* ---------- song detail sheet ---------- */
+.sheet{position:fixed;left:0;right:0;bottom:0;top:0;z-index:70;background:rgba(0,0,0,.6);display:flex;align-items:flex-end;justify-content:center}
+.sheet-in{background:var(--card);border-radius:28px 28px 0 0;width:100%;max-width:var(--max-w);max-height:88vh;overflow:auto;padding:20px 20px calc(24px + env(safe-area-inset-bottom))}
+.sheet-in .grab{width:44px;height:5px;border-radius:99px;background:#3a3a3a;margin:0 auto 16px}
+.detail-cover{height:190px;border-radius:20px;display:flex;align-items:flex-end;padding:16px;font-size:44px;font-weight:800;margin-bottom:14px}
+.detail-lyrics{white-space:pre-wrap;line-height:1.75;background:#0d0d0d;border-radius:var(--radius-sm);padding:15px;margin-top:12px}
+.detail-lyrics .cur{background:rgba(255,211,77,.2);border-radius:4px}
+.sheet-actions{display:flex;gap:8px;flex-wrap:wrap;margin-top:14px}
+
+/* ---------- row action menu ---------- */
+.menu-pop{position:fixed;z-index:80;background:var(--card-2);border-radius:var(--radius-sm);padding:6px;box-shadow:0 12px 40px rgba(0,0,0,.8);min-width:190px}
+.menu-pop button{display:block;width:100%;background:none;border:0;text-align:left;padding:11px 13px;font-size:15px;border-radius:9px}
+.menu-pop button:hover{background:var(--pill)}
+.menu-pop button.danger{color:var(--ver)}
+
+/* ---------- toast ---------- */
+.toast{position:fixed;left:50%;bottom:calc(var(--nav-h) + 76px);transform:translateX(-50%);background:#fff;color:#111;padding:11px 18px;border-radius:999px;font-weight:700;font-size:14px;z-index:99;box-shadow:0 8px 30px rgba(0,0,0,.5);white-space:nowrap;max-width:92vw;overflow:hidden;text-overflow:ellipsis}
