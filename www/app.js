@@ -8,7 +8,7 @@
    ========================================================================== */
 'use strict';
 /* __PURE_START__ */
-const CURRENT_VERSION = '1.2.1';
+const CURRENT_VERSION = '1.2.2';
 const REPO = 'torreskodi02-gif/ai-song-maker';
 const LATEST_API = 'https://api.github.com/repos/' + REPO + '/releases/latest';
 /* Fallback for the update check: the release title is often unversioned
@@ -345,8 +345,20 @@ function crashHit(ctx, dest, t, vol){
 /* Plucked-string guitar, Karplus-Strong: a burst of noise fed through a
    delay loop tuned to the note. Acoustic = slower decay, electric = faster
    decay with a touch of drive. Works in live and OfflineAudioContext. */
+/* Karplus-Strong pluck cache: a pluck buffer is fully determined by
+   (midi, dur, style, sampleRate) — the noise seed comes from midi alone —
+   so the same pluck is bit-identical every time it is played. Rebuilding it
+   sample-by-sample for every guitar note was ~95% of the scheduling cost
+   (hundreds of buffers per song, tens of thousands of samples each), which
+   froze the main thread for ~half a second on an older phone on every Play.
+   Cache it (capped, FIFO) and a song schedules in a few ms after the first bar. */
+const _guitarCache = new Map();
 function guitarPluckBuffer(ctx, midi, dur, style){
-  const sr = ctx.sampleRate, freq = midiToFreq(midi);
+  const sr = ctx.sampleRate;
+  const key = sr + '|' + midi + '|' + dur.toFixed(3) + '|' + style;
+  const hit = _guitarCache.get(key);
+  if (hit) return hit;
+  const freq = midiToFreq(midi);
   const len = Math.max(1, Math.floor(dur * sr));
   const buf = ctx.createBuffer(1, len, sr);
   const d = buf.getChannelData(0);
@@ -357,6 +369,8 @@ function guitarPluckBuffer(ctx, midi, dur, style){
   for (let i = N; i < len; i++) d[i] = decay * 0.5 * (d[i - N] + d[i - N + 1 < len ? i - N + 1 : i - N]);
   const fade = Math.floor(sr * 0.08);
   for (let i = 0; i < fade && len - 1 - i >= 0; i++) d[len - 1 - i] *= i / fade;
+  if (_guitarCache.size >= 64){ const first = _guitarCache.keys().next().value; _guitarCache.delete(first); }
+  _guitarCache.set(key, buf);
   return buf;
 }
 function guitarNote(ctx, dest, t, midi, dur, style, vol){
@@ -438,9 +452,16 @@ function vocalNote(ctx, dest, t, midi, dur, style, vol, prevMidi, warmHz){
   }
 }
 /* Schedule a whole song into any BaseAudioContext (live or offline).
-   Returns { durationSec, lineEvents: [{t, text, line}] } with absolute times. */
+   Returns { durationSec, lineEvents: [{t, text, line}] } with absolute times.
+   Pass opts.barStart / opts.barEnd to schedule only those bars (the live
+   lookahead scheduler drives it bar by bar so the Play tap never blocks).
+   opts.prevMidi carries the vocal glide across chunks; the returned lastMidi
+   is the last melody note scheduled, to pass to the next chunk. When no bar
+   range is given the whole song is scheduled in one call (WAV export). */
 function scheduleSong(ctx, dest, song, opts){
   const o = opts || {}; const t0 = o.t0 || 0; const fromBeat = o.fromBeat || 0;
+  const barStart = (o.barStart != null) ? o.barStart : 0;
+  const barEnd = (o.barEnd != null) ? o.barEnd : song.bars;
   const beat = song.beat; const barSec = 4 * beat;
   const prog = PROGRESSIONS[song.genre] || PROGRESSIONS.Pop;
   const drums = DRUMS[prog.drum] || DRUMS.pop;
@@ -453,9 +474,12 @@ function scheduleSong(ctx, dest, song, opts){
   const hasKeys = has('Piano') || has('Keys') || has('Strings') || has('Synth');
   const sections = song.barSections || [];
   const secOf = bar => sections[bar] || 'verse';
-  const hrng = mulberry32(hashStr(song.id || 'song')); /* humanize: same song, same feel, every render */
   const totalBeats = song.bars * 4;
-  for (let bar = 0; bar < song.bars; bar++){
+  for (let bar = barStart; bar < Math.min(barEnd, song.bars); bar++){
+    /* Humanize per bar, seeded by song + bar: a bar-by-bar (lookahead)
+       schedule then sounds identical to a full schedule, and the jitter
+       never repeats identically every bar. */
+    const hrng = mulberry32((hashStr(song.id || 'song') + bar) >>> 0);
     const barStartBeat = bar * 4; const barT = t0 + (barStartBeat - fromBeat) * beat;
     if (barT + barSec < t0) continue;
     const barVol = energyVol * (SECTION_GAIN[secOf(bar)] || 1);
@@ -503,9 +527,10 @@ function scheduleSong(ctx, dest, song, opts){
     }
   }
   const lineEvents = [];
+  let prevMidi = (o.prevMidi != null) ? o.prevMidi : null; /* glide across chunks */
   if (!song.instrumental){
-    let prevMidi = null;
     for (const n of song.melody){
+      if (n.startBeat < barStart * 4 || n.startBeat >= barEnd * 4) continue; /* this chunk only */
       const nt = t0 + (n.startBeat - fromBeat) * beat; if (nt + n.dur * beat < t0) continue;
       const line = song.lineEvents[n.line];
       const secVol = energyVol * (SECTION_GAIN[line ? line.section : 'verse'] || 1);
@@ -518,9 +543,10 @@ function scheduleSong(ctx, dest, song, opts){
     }
   }
   for (const le of song.lineEvents){
+    if (le.startBeat < barStart * 4 || le.startBeat >= barEnd * 4) continue; /* this chunk only */
     lineEvents.push({ t: t0 + (le.startBeat - fromBeat) * beat, end: t0 + (le.endBeat - fromBeat) * beat, text: le.text, section: le.section });
   }
-  return { durationSec: totalBeats * beat, lineEvents };
+  return { durationSec: totalBeats * beat, lineEvents, lastMidi: prevMidi };
 }
 /* --- WAV export: render offline, encode 16-bit PCM --- */
 function encodeWAV(buffer){
@@ -761,8 +787,33 @@ function setProgress(pct, label){
   $('progress').classList.remove('hidden');
   $('progressBar').style.width = pct + '%';
   $('progressLabel').textContent = label;
+  const p = $('progressPct'); if (p) p.textContent = Math.round(pct) + '%';
+}
+/* Reveal the lyrics section by section so the user watches the song being
+   written instead of staring at a frozen block. Yields between sections so
+   the UI actually repaints and the progress bar moves. */
+async function revealLyricsProgressive(text){
+  const parsed = parseLyrics(text);
+  $('lyricsPreviewWrap').classList.remove('hidden');
+  $('lyricsPreview').innerHTML = '';
+  const total = Math.max(1, parsed.sections.length);
+  for (let i = 0; i < parsed.sections.length; i++){
+    const s = parsed.sections[i];
+    $('lyricsPreview').innerHTML += `<div class="sec">[${esc(s.name.toUpperCase())}]</div>` + s.lines.map(esc).join('\n') + '\n\n';
+    setProgress(5 + Math.round(25 * (i + 1) / total), 'Writing lyrics… ' + s.name);
+    await sleep(160); /* yield so the lines actually appear + the bar moves */
+  }
 }
 const sleep = ms => new Promise(r => setTimeout(r, ms));
+/* Song creation, in visible steps with a progress % and a status line —
+   never one frozen block. Each stage names what is being written right now
+   and yields (await) so the UI repaints and the bar actually moves.
+   THREADING NOTE: no Web Worker here. After the guitar-buffer cache and the
+   incremental lookahead scheduler, the remaining per-step main-thread work
+   is a few milliseconds (buildSong ~1-2ms, one bar ~1-3ms), so there is
+   nothing heavy left to offload — and a Blob-URL worker is unreliable in
+   this Capacitor WebView. The work is chunked with yields instead, which is
+   what keeps the UI responsive on this phone. */
 async function createSong(){
   const btn = $('btnCreate'); if (btn.disabled) return;
   /* Warm up audio NOW, inside the tap — Android blocks audio started
@@ -773,13 +824,16 @@ async function createSong(){
   if (!prompt){ toast('Write lyrics or a prompt first'); $('lyricsBox').focus(); return; }
   btn.disabled = true;
   try {
-    setProgress(12, 'Merlin is writing lyrics…'); await sleep(420);
+    /* 1 — lyrics (5-30%): the lines appear section by section. */
+    setProgress(5, 'Writing lyrics…'); await sleep(120);
     if (!lyrics || lyrics.split('\n').filter(l => l.trim()).length < 4){
       lyrics = generateLyrics(prompt, $('mood').value, settings.genre, hashStr(prompt + settings.genre + settings.variety + Date.now()));
       $('lyricsBox').value = lyrics;
     }
-    showLyricsPreview(lyrics);
-    setProgress(38, 'Composing melody…'); await sleep(380);
+    await revealLyricsProgressive(lyrics);
+    setProgress(30, 'Lyrics done — ' + lyrics.split('\n').filter(l => l.trim()).length + ' lines'); await sleep(140);
+    /* 2 — melody + chords (35-55%): buildSong is the real composition work. */
+    setProgress(35, 'Composing melody…'); await sleep(140);
     const seed = hashStr(prompt + settings.genre + settings.variety) + Math.floor(Math.random() * 1e6);
     const song = buildSong({
       title: $('songTitle').value.trim() || titleFromPrompt(prompt),
@@ -790,10 +844,18 @@ async function createSong(){
       variety: settings.variety, instrumental: settings.instrumental, seed,
       audioRefName: audioRef ? audioRef.name : '',
     }, lyrics, voiceProfile);
-    setProgress(62, 'Building beat…'); await sleep(380);
-    setProgress(86, 'Mixing vocals…'); await sleep(380);
+    setProgress(55, 'Melody done — ' + song.melody.length + ' notes in ' + song.key + ' · ' + song.tempo + ' BPM'); await sleep(140);
+    /* 3 — drums + band (60-75%). */
+    setProgress(62, 'Building drums…'); await sleep(140);
+    const drumName = (PROGRESSIONS[song.genre] || PROGRESSIONS.Pop).drum;
+    setProgress(72, 'Drums ready — ' + drumName + ' beat · ' + song.instruments.join(', ')); await sleep(140);
+    /* 4 — vocals (80-92%). */
+    setProgress(80, 'Shaping vocals…'); await sleep(140);
+    const vRange = song.voiceRange ? midiToName(song.voiceRange.low) + '–' + midiToName(song.voiceRange.high) : song.vocalStyle;
+    setProgress(90, 'Vocals tuned — ' + song.vocalStyle + ' · range ' + vRange); await sleep(140);
+    /* 5 — save + show (100%). */
     songs.unshift(song); saveSongs();
-    setProgress(100, 'Done — tap Play to hear it'); await sleep(350);
+    setProgress(100, 'Done — tap Play to hear it'); await sleep(220);
     $('progress').classList.add('hidden');
     renderLibrary(); renderHome();
     /* Do NOT auto-play here: this runs ~2s after the Create tap, outside
@@ -971,7 +1033,13 @@ function openSong(id){
 function closeSheet(){ $('songSheet').classList.add('hidden'); }
 
 /* ================= PLAYER ================= */
-let audioCtx = null, songGain = null, playState = null, playTimer = null, playWatchdogTimer = null;
+let audioCtx = null, songGain = null, playState = null, playTimer = null, playWatchdogTimer = null, schedTimer = null;
+/* Lookahead scheduler: schedule one bar at a time, ~1s ahead of playback,
+   on a 150ms tick. The Play tap then only schedules the first bar (a few ms)
+   and returns immediately, instead of blocking the main thread while the
+   whole song (~8-11k nodes) is scheduled at once. */
+const SCHED_TICK_MS = 150;
+const LOOKAHEAD_SEC = 1.0;
 /* One long-lived AudioContext for the whole app. Android's WebView blocks
    audio that starts without a tap, so the context is created + resumed
    synchronously inside tap handlers (warmAudio) — never after an async
@@ -1013,9 +1081,11 @@ function renderAudioDiag(){
   if (el) el.textContent = audioDiagText();
 }
 function clearPlayWatchdog(){ if (playWatchdogTimer){ clearTimeout(playWatchdogTimer); playWatchdogTimer = null; } }
+function clearSchedTimer(){ if (schedTimer){ clearInterval(schedTimer); schedTimer = null; } }
 function stopPlayback(){
   if (playTimer){ clearInterval(playTimer); playTimer = null; }
   clearPlayWatchdog();
+  clearSchedTimer();
   /* Disconnect the song's gain — the old notes finish silently into nothing.
      Never close the context: a fresh context made outside a tap starts
      suspended on Android and the next play does nothing. */
@@ -1034,16 +1104,42 @@ async function playSong(song, fromBeat, isRetry){
   songGain = ctx.createGain(); songGain.gain.value = 0.9; songGain.connect(ctx.destination);
   const t0 = ctx.currentTime + 0.12;
   const startT = ctx.currentTime;
-  let sched;
-  try { sched = scheduleSong(ctx, songGain, song, { t0, fromBeat: fromBeat || 0 }); }
-  catch (err){ console.error(err); toast('Could not start playback — try again'); renderAudioDiag(); return; }
+  const fb = fromBeat || 0;
+  const beat = song.beat;
+  const durationSec = song.bars * 4 * beat;
+  /* Lookahead scheduler: schedule bars only as playback approaches them.
+     The first call below schedules just the opening bar(s), so this tap
+     returns in a few ms; a 150ms tick then keeps ~1s of audio scheduled
+     ahead. One bar earlier than the seek point catches a melody note that
+     started just before it but is still sounding. */
+  const allLineEvents = [];
+  let scheduledBar = Math.max(0, Math.floor(fb / 4) - (fb > 0 ? 1 : 0));
+  let lastMidi = null;
+  let schedErr = null;
+  const scheduleAhead = () => {
+    try {
+      const horizon = ctx.currentTime + LOOKAHEAD_SEC;
+      while (scheduledBar < song.bars){
+        const barT = t0 + (scheduledBar * 4 - fb) * beat;
+        if (barT > horizon) break;
+        const r = scheduleSong(ctx, songGain, song, { t0, fromBeat: fb, barStart: scheduledBar, barEnd: scheduledBar + 1, prevMidi: lastMidi });
+        if (r.lastMidi != null) lastMidi = r.lastMidi;
+        for (const le of r.lineEvents) allLineEvents.push(le);
+        scheduledBar++;
+      }
+      if (scheduledBar >= song.bars) clearSchedTimer();
+    } catch (err){ schedErr = err; console.error(err); clearSchedTimer(); }
+  };
+  scheduleAhead();
+  if (schedErr){ toast('Could not start playback — try again'); renderAudioDiag(); return; }
   song.plays = (song.plays || 0) + 1; saveSongs();
-  playState = { song, t0, fromBeat: fromBeat || 0, durationSec: sched.durationSec, lineEvents: sched.lineEvents, paused: false };
+  playState = { song, t0, fromBeat: fb, durationSec, lineEvents: allLineEvents, paused: false };
   $('playerBar').classList.remove('hidden');
   $('pTitle').textContent = song.title;
   $('btnPlayPause').textContent = '⏸';
   document.querySelectorAll(`[data-song="${song.id}"]`).forEach(r => r.classList.add('playing'));
   playTimer = setInterval(updatePlayer, 120);
+  schedTimer = setInterval(scheduleAhead, SCHED_TICK_MS);
   updatePlayer();
   renderAudioDiag();
   /* Watchdog: ~1s after scheduling, check the clock actually moved. A

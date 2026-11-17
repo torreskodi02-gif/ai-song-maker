@@ -49,4 +49,62 @@ for (const genre of ['Hip-hop', 'Rock', 'Country', 'Lo-fi', 'Pop']){
   if (pick.instruments.includes('Guitar')) assert.ok(ctx.calls.bufSrc > 0, genre + ' schedules guitar plucks');
   console.log(`mock-audio ${genre}: ${out.durationSec.toFixed(1)}s, osc=${ctx.calls.osc} bufSrc=${ctx.calls.bufSrc} buffers=${ctx.calls.buffer}`);
 }
+/* ---- v1.2.2 caps: guitar-buffer cache + incremental (bar-by-bar) scheduling ----
+   Rock 48 bars, guitar-heavy: uncached, ~288 Karplus buffer generations.
+   With the cache the same song collapses to ~12 unique buffers, and the
+   lookahead scheduler only builds one bar per tick, so the Play tap never
+   creates ~8-10k nodes in one frozen block. */
+{
+  const M2 = fn(); // fresh module instance: empty guitar + noise caches
+  const lyrics2 = M2.generateLyrics('Sunday morning with my girl, no stress', 'Romantic', 'R&B', 42);
+  const pick2 = M2.smartPick('Rock', 'Happy', 'test song about tonight', 2);
+  const song2 = M2.buildSong({ title: 'Caps Rock', genre: 'Rock', mood: 'Happy', tempo: pick2.tempo,
+    key: pick2.key, durationTarget: 120, energy: 2, vocalStyle: 'Smooth',
+    instruments: pick2.instruments, smartPick: pick2, guitarStyle: pick2.guitarStyle, seed: 7 }, lyrics2, { baseHz: 110 });
+  assert.equal(song2.bars, 48, 'caps song is 48 bars');
+  // Incremental schedule FIRST (cold cache), bar by bar — exactly what the
+  // lookahead scheduler does on a Play tap.
+  const ctxInc = new MockCtx();
+  const destInc = new Gain(ctxInc);
+  let lastMidi = null;
+  const incLineEvents = [];
+  for (let bar = 0; bar < song2.bars; bar++){
+    const before = { osc: ctxInc.calls.osc, gain: ctxInc.calls.gain, filter: ctxInc.calls.filter, bufSrc: ctxInc.calls.bufSrc };
+    const r = M2.scheduleSong(ctxInc, destInc, song2, { t0: 0.05, barStart: bar, barEnd: bar + 1, prevMidi: lastMidi });
+    if (r.lastMidi != null) lastMidi = r.lastMidi;
+    for (const le of r.lineEvents) incLineEvents.push(le);
+    if (bar === 0){
+      const barNodes = (ctxInc.calls.osc - before.osc) + (ctxInc.calls.gain - before.gain) + (ctxInc.calls.filter - before.filter) + (ctxInc.calls.bufSrc - before.bufSrc);
+      // CAP: the first tick (one bar) must be a small fraction of the whole song.
+      assert.ok(barNodes <= 400, 'first tick (one bar) creates <=400 nodes, got ' + barNodes);
+      console.log(`caps first-bar nodes=${barNodes}`);
+    }
+  }
+  const incNodes = ctxInc.calls.osc + ctxInc.calls.gain + ctxInc.calls.filter + ctxInc.calls.bufSrc;
+  const incBuffers = ctxInc.calls.buffer;
+  // CAP: Karplus buffers collapse on a cold cache (Rock ~288 generations -> ~12 unique + 1 noise buffer).
+  assert.ok(incBuffers <= 20, 'incremental schedule creates <=20 buffers (cache), got ' + incBuffers);
+  // Full schedule (one call) — the reference. Must match the incremental one.
+  const ctxFull = new MockCtx();
+  const outFull = M2.scheduleSong(ctxFull, new Gain(ctxFull), song2, { t0: 0.05 });
+  const fullNodes = ctxFull.calls.osc + ctxFull.calls.gain + ctxFull.calls.filter + ctxFull.calls.bufSrc;
+  const fullBuffers = ctxFull.calls.buffer;
+  console.log(`caps full-schedule nodes=${fullNodes}, buffers=${fullBuffers} (warm cache)`);
+  // Incremental == full: same nodes, same lyric lines, same duration.
+  assert.equal(incNodes, fullNodes, 'bar-by-bar nodes == full-schedule nodes');
+  assert.equal(incLineEvents.length, outFull.lineEvents.length, 'bar-by-bar lineEvents == full lineEvents');
+  for (let i = 0; i < incLineEvents.length; i++){
+    assert.equal(incLineEvents[i].t, outFull.lineEvents[i].t, 'lineEvent t matches');
+    assert.equal(incLineEvents[i].text, outFull.lineEvents[i].text, 'lineEvent text matches');
+  }
+  assert.equal(outFull.durationSec, song2.bars * 4 * song2.beat, 'durationSec is the full song');
+  console.log(`caps Rock 48 bars: buffers=${incBuffers} (was ~288 uncached), nodes=${incNodes}, lineEvents=${incLineEvents.length}`);
+  // Second full schedule of the same song: every guitar buffer is a cache hit.
+  const ctx2 = new MockCtx();
+  const beforeBuf = ctx2.calls.buffer;
+  M2.scheduleSong(ctx2, new Gain(ctx2), song2, { t0: 0.05 });
+  const secondBuffers = ctx2.calls.buffer - beforeBuf;
+  assert.ok(secondBuffers <= 1, 'second schedule of same song creates ~0 new buffers (cache), got ' + secondBuffers);
+  console.log(`caps second schedule buffers=${secondBuffers} (cache hit)`);
+}
 console.log('MOCK AUDIO TEST PASSED');
